@@ -2,7 +2,7 @@ interface StatusBarProps {
     isSaved: boolean;
     lineNumber: number;
     columnNumber: number;
-    mode?: "preview" | "code";
+    mode?: "preview" | "code" | "split";
     showFileExplorer?: boolean;
     showTOC?: boolean;
     onToggleFileExplorer?: () => void;
@@ -69,7 +69,7 @@ export function StatusBar({
                     ></span>
                     <span className="transition-colors">{isSaved ? "Saved" : "Unsaved"}</span>
                 </div>
-                {mode === "code" && (
+                {(mode === "code" || mode === "split") && (
                     <div className="hover:text-[var(--text-primary)] cursor-default transition-colors">
                         Ln {lineNumber}, Col {columnNumber}
                     </div>

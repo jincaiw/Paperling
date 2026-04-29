@@ -9,11 +9,21 @@ import { WelcomeScreen } from "./components/WelcomeScreen";
 import { MarkdownPreview } from "./components/MarkdownPreview";
 import { CodeEditor } from "./components/CodeEditor";
 import { StatusBar } from "./components/StatusBar";
-import { ModeToggle } from "./components/ModeToggle";
+import { ModeToggle, type ViewMode } from "./components/ModeToggle";
 import { FileExplorer } from "./components/FileExplorer";
 import { TableOfContents } from "./components/TableOfContents";
 import { Toast, ToastType } from "./components/Toast";
 import { UnsavedChangesDialog } from "./components/UnsavedChangesDialog";
+import { SplitDivider } from "./components/SplitDivider";
+import {
+  addRecentFile,
+  getLastFile,
+  getSavedViewMode,
+  getSplitRatio,
+  setLastFile,
+  setSavedViewMode,
+  setSplitRatio,
+} from "./utils/persistence";
 
 interface FileData {
   path: string;
@@ -22,8 +32,6 @@ interface FileData {
   size: number;
   line_count: number;
 }
-
-type ViewMode = "preview" | "code";
 
 // Utility function to count words in text
 const getWordCount = (text: string): number => {
@@ -40,7 +48,8 @@ function AppContent() {
   const [fileSize, setFileSize] = useState<number>(0);
 
   // UI state
-  const [mode, setMode] = useState<ViewMode>("preview");
+  const [mode, setMode] = useState<ViewMode>(() => getSavedViewMode());
+  const [splitRatio, setSplitRatioState] = useState<number>(() => getSplitRatio());
   const [cursorPosition, setCursorPosition] = useState({ line: 1, col: 1 });
   const [isLoading, setIsLoading] = useState(false);
 
@@ -60,6 +69,7 @@ function AppContent() {
 
   // Export HTML content ref - captures from visible preview
   const previewRef = useRef<HTMLDivElement>(null);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
 
   // Derived state
   const isDirty = content !== originalContent;
@@ -82,7 +92,9 @@ function AppContent() {
       setContent(fileData.content);
       setOriginalContent(fileData.content);
       setFileSize(fileData.size);
-      setMode("preview");
+      // Track recents + last-opened for restore-on-launch
+      addRecentFile(fileData.path, fileData.name);
+      setLastFile(fileData.path);
     } catch (err) {
       console.error("Failed to load file:", err);
       showToast("Failed to open file", "error");
@@ -90,6 +102,36 @@ function AppContent() {
       setIsLoading(false);
     }
   }, [showToast]);
+
+  // Persist view mode + restore last file on mount
+  useEffect(() => {
+    setSavedViewMode(mode);
+  }, [mode]);
+
+  useEffect(() => {
+    setSplitRatio(splitRatio);
+  }, [splitRatio]);
+
+  useEffect(() => {
+    // Restore last opened file once on app launch
+    const last = getLastFile();
+    if (last) {
+      // Fire-and-forget; failures are silent (file may have been moved/deleted)
+      invoke<FileData>("read_file", { path: last })
+        .then((fileData) => {
+          setFilePath(fileData.path);
+          setFileName(fileData.name);
+          setContent(fileData.content);
+          setOriginalContent(fileData.content);
+          setFileSize(fileData.size);
+        })
+        .catch(() => {
+          setLastFile(null);
+        });
+    }
+    // Run only once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Load file with unsaved changes protection
   const loadFile = useCallback(async (path: string) => {
@@ -245,9 +287,13 @@ function AppContent() {
     };
   }, [loadFile]);
 
-  // Toggle mode
+  // Toggle between preview and code (skips split — split has its own shortcut)
   const handleToggleMode = useCallback(() => {
-    setMode((prev) => (prev === "preview" ? "code" : "preview"));
+    setMode((prev) => (prev === "code" ? "preview" : "code"));
+  }, []);
+
+  const handleToggleSplit = useCallback(() => {
+    setMode((prev) => (prev === "split" ? "preview" : "split"));
   }, []);
 
   // Toggle file explorer (mutually exclusive with TOC)
@@ -327,18 +373,25 @@ function AppContent() {
           handleSaveFile();
         }
       }
-      // Ctrl+E - Toggle mode (without Shift)
+      // Ctrl+E - Toggle preview/code mode (without Shift)
       if (e.ctrlKey && !e.shiftKey && e.key === "e") {
         e.preventDefault();
         if (hasFile) {
           handleToggleMode();
         }
       }
+      // Ctrl+\ - Toggle split view
+      if (e.ctrlKey && !e.shiftKey && e.key === "\\") {
+        e.preventDefault();
+        if (hasFile) {
+          handleToggleSplit();
+        }
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleOpenFile, handleSaveFile, handleToggleMode, handleToggleFileExplorer, handleToggleTOC, hasFile, content]);
+  }, [handleOpenFile, handleSaveFile, handleToggleMode, handleToggleSplit, handleToggleFileExplorer, handleToggleTOC, hasFile, content]);
 
   // Get export HTML from the visible preview on demand (avoids duplicate rendering)
   const getExportHtml = useCallback((): string => {
@@ -363,32 +416,60 @@ function AppContent() {
         <WelcomeScreen onOpenFile={handleOpenFile} onFileDrop={handleFileDrop} />
       ) : (
         <>
-          {/* Both views rendered; toggle via display to preserve scroll/state */}
-          <div className="flex-1 overflow-hidden flex flex-col" style={{ display: mode === "preview" ? "flex" : "none" }}>
-            <MarkdownPreview
-              content={content}
-              fileName={fileName || ""}
-              lineCount={lineCount}
-              fileSize={fileSize}
-              onEditClick={handleToggleMode}
-              onLineChange={(line) => setPreviewLine(line)}
-              filePath={filePath}
-              markdownBodyRef={previewRef}
-              onContentChange={handleContentChange}
-            />
-          </div>
-          <div className="flex-1 overflow-hidden flex flex-col" style={{ display: mode === "code" ? "flex" : "none" }}>
-            <CodeEditor
-              content={content}
-              onChange={handleContentChange}
-              onCursorChange={(line, col) => setCursorPosition({ line, col })}
-              onImagePaste={handleImagePaste}
-              onError={handleError}
-              filePath={filePath}
-            />
+          {/* Split-aware layout. Both views always mounted; CSS toggles their display
+              and width so editor/preview state (scroll, selection) is preserved across
+              mode switches. */}
+          <div ref={splitContainerRef} className="flex-1 overflow-hidden flex flex-row">
+            <div
+              data-split-left
+              className="overflow-hidden flex flex-col"
+              style={{
+                display: mode === "code" || mode === "split" ? "flex" : "none",
+                flexBasis: mode === "split" ? `${splitRatio * 100}%` : "100%",
+                flexGrow: mode === "split" ? 0 : 1,
+                flexShrink: 0,
+                minWidth: 0,
+              }}
+            >
+              <CodeEditor
+                content={content}
+                onChange={handleContentChange}
+                onCursorChange={(line, col) => setCursorPosition({ line, col })}
+                onImagePaste={handleImagePaste}
+                onError={handleError}
+                filePath={filePath}
+              />
+            </div>
+
+            {mode === "split" && (
+              <SplitDivider onDrag={setSplitRatioState} containerRef={splitContainerRef} />
+            )}
+
+            <div
+              className="overflow-hidden flex flex-col"
+              style={{
+                display: mode === "preview" || mode === "split" ? "flex" : "none",
+                flexBasis: mode === "split" ? `${(1 - splitRatio) * 100}%` : "100%",
+                flexGrow: mode === "split" ? 0 : 1,
+                flexShrink: 0,
+                minWidth: 0,
+              }}
+            >
+              <MarkdownPreview
+                content={content}
+                fileName={fileName || ""}
+                lineCount={lineCount}
+                fileSize={fileSize}
+                onEditClick={handleToggleMode}
+                onLineChange={(line) => setPreviewLine(line)}
+                filePath={filePath}
+                markdownBodyRef={previewRef}
+                onContentChange={handleContentChange}
+              />
+            </div>
           </div>
 
-          <ModeToggle mode={mode} onToggle={handleToggleMode} />
+          <ModeToggle mode={mode} onSetMode={setMode} />
 
           {/* Sidebar Panels */}
           <FileExplorer
