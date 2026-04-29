@@ -17,6 +17,8 @@ import { UnsavedChangesDialog } from "./components/UnsavedChangesDialog";
 import { SplitDivider } from "./components/SplitDivider";
 import { createScrollSync } from "./utils/scrollSync";
 import { ShortcutCheatsheet } from "./components/ShortcutCheatsheet";
+import { CommandPalette, type PaletteCommand } from "./components/CommandPalette";
+import { getRecentFiles } from "./utils/persistence";
 import {
   addRecentFile,
   getAutoSave,
@@ -60,6 +62,7 @@ function AppContent() {
   // UI state
   const [mode, setMode] = useState<ViewMode>(() => getSavedViewMode());
   const [showCheatsheet, setShowCheatsheet] = useState(false);
+  const [showPalette, setShowPalette] = useState(false);
   const [splitRatio, setSplitRatioState] = useState<number>(() => getSplitRatio());
   const [autoSaveEnabled, setAutoSaveEnabled] = useState<boolean>(() => getAutoSave());
   const [focusModeEnabled, setFocusModeEnabled] = useState<boolean>(() => getFocusMode());
@@ -485,6 +488,11 @@ function AppContent() {
           setShowCheatsheet(true);
         }
       }
+      // Ctrl+P / Ctrl+Shift+P — command palette
+      if ((e.ctrlKey || e.metaKey) && (e.key === "p" || e.key === "P")) {
+        e.preventDefault();
+        setShowPalette(true);
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -498,6 +506,163 @@ function AppContent() {
     }
     return "";
   }, []);
+
+  // Build the command palette item list. Rebuilds on relevant state changes —
+  // recent files, current file, current view mode, toggles.
+  const paletteItems = useMemo<PaletteCommand[]>(() => {
+    const items: PaletteCommand[] = [];
+
+    // === File ===
+    items.push({
+      id: "file.open",
+      label: "Open file…",
+      hint: "Ctrl+O",
+      section: "File",
+      icon: "folder_open",
+      run: handleOpenFile,
+    });
+    items.push({
+      id: "file.save",
+      label: "Save",
+      hint: "Ctrl+S",
+      section: "File",
+      icon: "save",
+      run: handleSaveFile,
+    });
+
+    // === View ===
+    items.push({
+      id: "view.preview",
+      label: "Switch to Reader mode",
+      hint: "Ctrl+E",
+      section: "View",
+      icon: "visibility",
+      run: () => setMode("preview"),
+    });
+    items.push({
+      id: "view.code",
+      label: "Switch to Code editor",
+      section: "View",
+      icon: "code",
+      run: () => setMode("code"),
+    });
+    items.push({
+      id: "view.split",
+      label: "Toggle Split view",
+      hint: "Ctrl+\\",
+      section: "View",
+      icon: "vertical_split",
+      run: handleToggleSplit,
+    });
+    items.push({
+      id: "view.explorer",
+      label: "Toggle file explorer",
+      hint: "Ctrl+Shift+E",
+      section: "View",
+      icon: "folder",
+      run: handleToggleFileExplorer,
+    });
+    items.push({
+      id: "view.toc",
+      label: "Toggle outline",
+      hint: "Ctrl+Shift+O",
+      section: "View",
+      icon: "format_list_bulleted",
+      run: handleToggleTOC,
+    });
+
+    // === Toggles ===
+    items.push({
+      id: "toggle.focus",
+      label: focusModeEnabled ? "Disable Focus mode" : "Enable Focus mode",
+      section: "Toggles",
+      icon: "center_focus_strong",
+      keywords: "dim non-active line",
+      run: () => setFocusModeEnabled((v) => !v),
+    });
+    items.push({
+      id: "toggle.typewriter",
+      label: typewriterModeEnabled ? "Disable Typewriter mode" : "Enable Typewriter mode",
+      section: "Toggles",
+      icon: "keyboard",
+      keywords: "scroll caret center",
+      run: () => setTypewriterModeEnabled((v) => !v),
+    });
+    items.push({
+      id: "toggle.toolbar",
+      label: toolbarVisible ? "Hide formatting toolbar" : "Show formatting toolbar",
+      section: "Toggles",
+      icon: "format_paint",
+      run: () => setToolbarVisible((v) => !v),
+    });
+    items.push({
+      id: "toggle.autosave",
+      label: autoSaveEnabled ? "Disable auto-save" : "Enable auto-save",
+      section: "Toggles",
+      icon: "save_as",
+      run: () => setAutoSaveEnabled((v) => !v),
+    });
+
+    // === Help ===
+    items.push({
+      id: "help.cheatsheet",
+      label: "Show keyboard shortcuts",
+      hint: "?",
+      section: "Help",
+      icon: "keyboard",
+      run: () => setShowCheatsheet(true),
+    });
+
+    // === Recent files ===
+    const recents = getRecentFiles();
+    for (const r of recents) {
+      if (r.path === filePath) continue; // current file
+      items.push({
+        id: `recent.${r.path}`,
+        label: r.name,
+        hint: r.path,
+        section: "Recent files",
+        icon: "description",
+        keywords: r.path,
+        run: () => loadFile(r.path),
+      });
+    }
+
+    // === Headings of current document ===
+    if (content) {
+      const lines = content.split("\n");
+      lines.forEach((line, idx) => {
+        const m = line.match(/^(#{1,6})\s+(.+)$/);
+        if (m) {
+          const level = m[1].length;
+          const text = m[2].trim();
+          items.push({
+            id: `head.${idx}`,
+            label: text,
+            hint: `H${level}`,
+            section: "Headings",
+            icon: level === 1 ? "title" : level === 2 ? "format_h2" : "format_h3",
+            keywords: "jump heading",
+            run: () => {
+              // Switch to preview if in code-only mode, then scroll to heading
+              setMode((prev) => (prev === "code" ? "preview" : prev));
+              requestAnimationFrame(() => {
+                const slug = text.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-");
+                const el = document.getElementById(slug);
+                el?.scrollIntoView({ behavior: "smooth", block: "start" });
+              });
+            },
+          });
+        }
+      });
+    }
+
+    return items;
+  }, [
+    handleOpenFile, handleSaveFile, handleToggleSplit, handleToggleFileExplorer, handleToggleTOC,
+    loadFile, filePath, content,
+    focusModeEnabled, typewriterModeEnabled, toolbarVisible, autoSaveEnabled,
+  ]);
 
   return (
     <div className="h-screen flex flex-col bg-[var(--bg-primary)] overflow-hidden transition-colors">
@@ -624,6 +789,7 @@ function AppContent() {
       )}
 
       <ShortcutCheatsheet isOpen={showCheatsheet} onClose={() => setShowCheatsheet(false)} />
+      <CommandPalette isOpen={showPalette} items={paletteItems} onClose={() => setShowPalette(false)} />
 
       {/* Toast notifications */}
       <Toast
