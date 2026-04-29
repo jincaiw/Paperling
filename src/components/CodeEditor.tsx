@@ -10,6 +10,7 @@ import {
     insertLink,
     type EditorResult,
 } from "../utils/editorActions";
+import { FindReplaceBar } from "./FindReplaceBar";
 
 interface CodeEditorProps {
     content: string;
@@ -50,6 +51,9 @@ export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, on
     const gutterRef = useRef<HTMLDivElement>(null);
     const highlightRef = useRef<HTMLDivElement>(null);
     const [activeLine, setActiveLine] = useState(1);
+    const [findOpen, setFindOpen] = useState(false);
+    const [findMode, setFindMode] = useState<"find" | "replace">("find");
+    const [selStartForFind, setSelStartForFind] = useState(0);
 
     const lines = useMemo(() => content.split("\n"), [content]);
     const lineCount = lines.length;
@@ -79,6 +83,24 @@ export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, on
     const onKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         const state = getState();
         if (!state) return;
+
+        // Ctrl+F / Ctrl+H — open find / find-and-replace bar
+        if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+            if (e.key === "f" || e.key === "F") {
+                e.preventDefault();
+                setSelStartForFind(state.selStart);
+                setFindMode("find");
+                setFindOpen(true);
+                return;
+            }
+            if (e.key === "h" || e.key === "H") {
+                e.preventDefault();
+                setSelStartForFind(state.selStart);
+                setFindMode("replace");
+                setFindOpen(true);
+                return;
+            }
+        }
 
         // Ctrl/Cmd shortcuts (Bold, Italic, Link). Other Ctrl combos handled at app level.
         if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
@@ -433,6 +455,29 @@ export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, on
         return parts.length > 0 ? <>{parts}</> : <span>{text}</span>;
     }
 
+    const handleFindJump = useCallback((start: number, end: number) => {
+        const t = textareaRef.current;
+        if (!t) return;
+        t.focus();
+        t.selectionStart = start;
+        t.selectionEnd = end;
+        // Scroll the matched line into view (textarea native scrollIntoView is unreliable;
+        // compute by line index instead)
+        const lineIdx = content.slice(0, start).split("\n").length - 1;
+        const desiredTop = lineIdx * EDITOR_LINE_HEIGHT - t.clientHeight / 2;
+        t.scrollTop = Math.max(0, desiredTop);
+    }, [content]);
+
+    const handleFindReplace = useCallback((newContent: string, newCursor: number) => {
+        onChange(newContent);
+        requestAnimationFrame(() => {
+            const t = textareaRef.current;
+            if (!t) return;
+            t.selectionStart = newCursor;
+            t.selectionEnd = newCursor;
+        });
+    }, [onChange]);
+
     return (
         <main className="flex-1 flex overflow-hidden relative">
             {/* Line Numbers Gutter */}
@@ -490,6 +535,19 @@ export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, on
                         </div>
                     ))}
                 </div>
+
+                <FindReplaceBar
+                    isOpen={findOpen}
+                    initialMode={findMode}
+                    content={content}
+                    selectionStart={selStartForFind}
+                    onClose={() => {
+                        setFindOpen(false);
+                        textareaRef.current?.focus();
+                    }}
+                    onJumpTo={handleFindJump}
+                    onReplace={handleFindReplace}
+                />
 
                 {/* Actual Editable Textarea — transparent text, real caret */}
                 <textarea
