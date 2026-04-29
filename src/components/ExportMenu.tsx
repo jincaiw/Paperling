@@ -5,11 +5,13 @@ import { exportToHTML, exportToPDF } from '../utils/exportUtils';
 interface ExportMenuProps {
     fileName: string;
     getExportHtml?: () => string;
+    onSuccess?: (format: string) => void;
+    onError?: (format: string) => void;
 }
 
 type ExportFormat = 'html' | 'pdf';
 
-export function ExportMenu({ fileName, getExportHtml }: ExportMenuProps) {
+export function ExportMenu({ fileName, getExportHtml, onSuccess, onError }: ExportMenuProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
     const { theme, font, fontSize } = useTheme();
@@ -48,8 +50,10 @@ export function ExportMenu({ fileName, getExportHtml }: ExportMenuProps) {
             } else {
                 await exportToPDF(htmlContent, fileName, theme, font, fontSize);
             }
+            onSuccess?.(format.toUpperCase());
         } catch (error) {
             console.error(`Failed to export ${format}:`, error);
+            onError?.(format.toUpperCase());
         } finally {
             setIsExporting(false);
         }

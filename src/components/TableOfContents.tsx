@@ -1,36 +1,39 @@
-import { useMemo, useEffect, useRef } from "react";
+import { useMemo, useEffect, useRef, useState } from "react";
+import { attachFocusTrap } from "../utils/focusTrap";
 
 interface TocItem {
     id: string;
     text: string;
     level: number;
+    line: number;
 }
 
 interface TableOfContentsProps {
     isOpen: boolean;
     content: string;
     onClose: () => void;
+    /** Current cursor line in code mode, or top-of-viewport line in preview. */
+    activeLine?: number;
 }
 
 export function TableOfContents({
     isOpen,
     content,
     onClose,
+    activeLine = 1,
 }: TableOfContentsProps) {
     const panelRef = useRef<HTMLElement>(null);
+    const [filter, setFilter] = useState("");
 
-    // Parse headings from markdown content
     const headings = useMemo((): TocItem[] => {
         if (!content) return [];
-
-        // Normalize line endings (handle Windows \r\n)
-        const normalizedContent = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-        const lines = normalizedContent.split("\n");
+        const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+        const lines = normalized.split("\n");
         const items: TocItem[] = [];
 
         lines.forEach((line, index) => {
-            const trimmedLine = line.trim();
-            const match = trimmedLine.match(/^(#{1,6})\s+(.+)$/);
+            const trimmed = line.trim();
+            const match = trimmed.match(/^(#{1,6})\s+(.+)$/);
             if (match) {
                 const level = match[1].length;
                 const text = match[2].trim();
@@ -38,13 +41,35 @@ export function TableOfContents({
                     .toLowerCase()
                     .replace(/[^a-z0-9]+/g, "-")
                     .replace(/^-|-$/g, "")}`;
-
-                items.push({ id, text, level });
+                items.push({ id, text, level, line: index + 1 });
             }
         });
-
         return items;
     }, [content]);
+
+    // Active heading: the last one whose source line is at-or-above the active line
+    const activeHeadingIdx = useMemo(() => {
+        let idx = -1;
+        for (let i = 0; i < headings.length; i++) {
+            if (headings[i].line <= activeLine) idx = i;
+            else break;
+        }
+        return idx;
+    }, [headings, activeLine]);
+
+    // Filtered list (filter by text only — keeps stable indexes)
+    const visible = useMemo(() => {
+        if (!filter.trim()) return headings.map((h, i) => ({ h, i }));
+        const q = filter.toLowerCase();
+        return headings.map((h, i) => ({ h, i })).filter(({ h }) => h.text.toLowerCase().includes(q));
+    }, [headings, filter]);
+
+    // Keep the active row in view when activeHeadingIdx changes
+    useEffect(() => {
+        if (activeHeadingIdx === -1) return;
+        const el = panelRef.current?.querySelector<HTMLElement>(`[data-toc-idx="${activeHeadingIdx}"]`);
+        el?.scrollIntoView({ block: "nearest" });
+    }, [activeHeadingIdx]);
 
     // Escape key to close and focus management
     useEffect(() => {
@@ -59,8 +84,12 @@ export function TableOfContents({
 
         document.addEventListener("keydown", handleKeyDown);
         panelRef.current?.focus();
+        const detachTrap = attachFocusTrap(panelRef.current);
 
-        return () => document.removeEventListener("keydown", handleKeyDown);
+        return () => {
+            document.removeEventListener("keydown", handleKeyDown);
+            detachTrap();
+        };
     }, [isOpen, onClose]);
 
     const handleHeadingClick = (text: string, level: number) => {
@@ -120,65 +149,69 @@ export function TableOfContents({
             {/* Header */}
             <div className="h-10 px-4 flex items-center justify-between border-b border-[var(--border)] bg-[var(--bg-titlebar)]">
                 <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)] no-select">
-                    <span className="material-symbols-outlined text-[18px]">
-                        format_list_bulleted
-                    </span>
-                    <span>Table of Contents</span>
+                    <span className="material-symbols-outlined text-[18px]">format_list_bulleted</span>
+                    <span>Outline</span>
                 </div>
                 <button
                     onClick={onClose}
-                    aria-label="Close table of contents"
-                    className="btn-press flex items-center justify-center w-7 h-7 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                    aria-label="Close outline"
+                    className="btn-press flex items-center justify-center w-7 h-7 rounded-[var(--radius-sm)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                 >
-                    <span className="material-symbols-outlined text-[18px]">
-                        close
-                    </span>
+                    <span className="material-symbols-outlined text-[18px]">close</span>
                 </button>
             </div>
 
+            {/* Filter (only shown when there are >5 headings to keep it clean) */}
+            {headings.length > 5 && (
+                <div className="px-3 py-2 border-b border-[var(--border-subtle)]">
+                    <input
+                        type="text"
+                        value={filter}
+                        onChange={(e) => setFilter(e.target.value)}
+                        placeholder="Filter headings…"
+                        aria-label="Filter headings"
+                        className="w-full px-2 py-1 text-xs bg-[var(--bg-input)] border border-[var(--border)] rounded-[var(--radius-sm)] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                    />
+                </div>
+            )}
+
             {/* Content */}
-            <nav className="flex-1 overflow-y-auto h-[calc(100%-2.5rem)]" aria-label="Document headings">
+            <nav className="flex-1 overflow-y-auto" aria-label="Document headings">
                 {headings.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-32 text-[var(--text-secondary)] text-sm gap-2">
-                        <span className="material-symbols-outlined text-[32px] opacity-40">
-                            format_list_bulleted
-                        </span>
-                        <span>No headings found</span>
+                    <div className="flex flex-col items-center justify-center h-32 text-[var(--text-secondary)] text-sm gap-2 px-4 text-center">
+                        <span className="material-symbols-outlined text-[32px] opacity-40">format_list_bulleted</span>
+                        <span>No headings yet.</span>
+                        <span className="text-[11px] text-[var(--text-muted)]">Type <code className="font-mono">#</code> to add one.</span>
+                    </div>
+                ) : visible.length === 0 ? (
+                    <div className="flex items-center justify-center h-32 text-[var(--text-secondary)] text-sm">
+                        No matches
                     </div>
                 ) : (
                     <ul className="py-2">
-                        {headings.map((heading, index) => (
-                            <li key={`${heading.id}-${index}`} className="stagger-item" style={{ animationDelay: `${index * 0.03}s` }}>
+                        {visible.map(({ h: heading, i: index }) => {
+                            const isActive = index === activeHeadingIdx;
+                            return (
+                            <li key={`${heading.id}-${index}`} data-toc-idx={index}>
                                 <button
-                                    onClick={() =>
-                                        handleHeadingClick(heading.text, heading.level)
-                                    }
+                                    onClick={() => handleHeadingClick(heading.text, heading.level)}
                                     aria-label={`Go to heading: ${heading.text}`}
-                                    className={`btn-press w-full px-4 py-2 text-left text-sm flex items-center gap-2 transition-colors text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] ${getIndent(
-                                        heading.level
-                                    )}`}
+                                    aria-current={isActive ? "location" : undefined}
+                                    className={`btn-press w-full px-4 py-1.5 text-left text-sm flex items-center gap-2 transition-colors ${getIndent(heading.level)} ${isActive
+                                        ? "bg-[var(--bg-hover)] text-[var(--text-primary)] border-l-2 border-[var(--accent)] -ml-px"
+                                        : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                                        }`}
                                 >
-                                    <span
-                                        className={`material-symbols-outlined text-[14px] ${heading.level === 1
-                                            ? "text-[var(--text-primary)]"
-                                            : "opacity-60"
-                                            }`}
-                                    >
+                                    <span className={`material-symbols-outlined text-[14px] ${heading.level === 1 ? "text-[var(--text-primary)]" : "opacity-60"}`}>
                                         {getIcon(heading.level)}
                                     </span>
-                                    <span
-                                        className={`truncate ${heading.level === 1
-                                            ? "font-semibold text-[var(--text-primary)]"
-                                            : heading.level === 2
-                                                ? "font-medium"
-                                                : ""
-                                            }`}
-                                    >
+                                    <span className={`truncate ${heading.level === 1 ? "font-semibold" : heading.level === 2 ? "font-medium" : ""}`}>
                                         {heading.text}
                                     </span>
                                 </button>
                             </li>
-                        ))}
+                            );
+                        })}
                     </ul>
                 )}
             </nav>

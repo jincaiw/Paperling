@@ -1,0 +1,218 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { attachFocusTrap } from "../utils/focusTrap";
+
+export interface PaletteCommand {
+    id: string;
+    label: string;
+    /** Optional secondary description shown on the right (path, shortcut, etc). */
+    hint?: string;
+    /** Section label — items are grouped by this. */
+    section: string;
+    /** Material symbol icon name. */
+    icon?: string;
+    /** Extra search keywords (not visible). */
+    keywords?: string;
+    run: () => void;
+}
+
+interface CommandPaletteProps {
+    isOpen: boolean;
+    items: PaletteCommand[];
+    onClose: () => void;
+}
+
+/** Tiny fzf-style ranker. Returns -1 for no match, otherwise a score (lower = better). */
+function fuzzyScore(needle: string, haystack: string): number {
+    if (!needle) return 0;
+    const n = needle.toLowerCase();
+    const h = haystack.toLowerCase();
+    if (h.includes(n)) return h.indexOf(n); // substring match — best
+    let hi = 0;
+    let score = 0;
+    let lastIdx = -1;
+    for (let ni = 0; ni < n.length; ni++) {
+        const ch = n[ni];
+        const found = h.indexOf(ch, hi);
+        if (found === -1) return -1;
+        if (lastIdx !== -1) score += (found - lastIdx);
+        lastIdx = found;
+        hi = found + 1;
+    }
+    return 1000 + score; // worse than substring matches
+}
+
+export function CommandPalette({ isOpen, items, onClose }: CommandPaletteProps) {
+    const [query, setQuery] = useState("");
+    const [activeIdx, setActiveIdx] = useState(0);
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const listRef = useRef<HTMLUListElement>(null);
+
+    // Reset state on open
+    useEffect(() => {
+        if (isOpen) {
+            setQuery("");
+            setActiveIdx(0);
+        }
+    }, [isOpen]);
+
+    // Focus input + trap, Escape to close
+    useEffect(() => {
+        if (!isOpen) return;
+        const input = dialogRef.current?.querySelector<HTMLInputElement>("input");
+        input?.focus();
+        const detach = attachFocusTrap(dialogRef.current);
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === "Escape") {
+                e.preventDefault();
+                onClose();
+            }
+        };
+        document.addEventListener("keydown", onKey);
+        return () => {
+            detach();
+            document.removeEventListener("keydown", onKey);
+        };
+    }, [isOpen, onClose]);
+
+    // Filtered + sorted result
+    const ranked = useMemo(() => {
+        if (!isOpen) return [];
+        if (!query.trim()) return items;
+        const scored = items
+            .map((it) => {
+                const candidates = [it.label, it.hint ?? "", it.keywords ?? "", it.section];
+                let best = -1;
+                for (const c of candidates) {
+                    const s = fuzzyScore(query, c);
+                    if (s !== -1 && (best === -1 || s < best)) best = s;
+                }
+                return { item: it, score: best };
+            })
+            .filter((r) => r.score !== -1)
+            .sort((a, b) => a.score - b.score)
+            .map((r) => r.item);
+        return scored;
+    }, [items, query, isOpen]);
+
+    // Group by section preserving order
+    const grouped = useMemo(() => {
+        const out: Array<{ section: string; items: PaletteCommand[] }> = [];
+        const seen = new Map<string, number>();
+        for (const it of ranked) {
+            const idx = seen.get(it.section);
+            if (idx === undefined) {
+                seen.set(it.section, out.length);
+                out.push({ section: it.section, items: [it] });
+            } else {
+                out[idx].items.push(it);
+            }
+        }
+        return out;
+    }, [ranked]);
+
+    // Keep activeIdx valid when results change
+    useEffect(() => {
+        if (activeIdx >= ranked.length) setActiveIdx(0);
+    }, [ranked.length, activeIdx]);
+
+    // Auto-scroll active row into view
+    useEffect(() => {
+        const list = listRef.current;
+        if (!list) return;
+        const active = list.querySelector<HTMLElement>(`[data-idx="${activeIdx}"]`);
+        active?.scrollIntoView({ block: "nearest" });
+    }, [activeIdx]);
+
+    const onKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setActiveIdx((i) => (ranked.length === 0 ? 0 : (i + 1) % ranked.length));
+        } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setActiveIdx((i) => (ranked.length === 0 ? 0 : (i - 1 + ranked.length) % ranked.length));
+        } else if (e.key === "Enter") {
+            e.preventDefault();
+            const cmd = ranked[activeIdx];
+            if (cmd) {
+                onClose();
+                cmd.run();
+            }
+        }
+    };
+
+    if (!isOpen) return null;
+
+    let runningIdx = -1;
+
+    return (
+        <div className="fixed inset-0 z-[110] flex items-start justify-center pt-[12vh]" role="dialog" aria-modal="true" aria-label="Command palette">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
+
+            <div
+                ref={dialogRef}
+                className="relative z-10 w-[640px] max-w-[92vw] flex flex-col bg-[var(--bg-secondary)] border border-[var(--border)] rounded-[var(--radius-lg)] shadow-2xl overflow-hidden animate-fade-in"
+                onKeyDown={onKeyDown}
+            >
+                <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border)]">
+                    <span className="material-symbols-outlined text-[var(--text-secondary)]">search</span>
+                    <input
+                        type="text"
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        placeholder="Type a command, file, or heading…"
+                        aria-label="Search commands"
+                        className="flex-1 bg-transparent text-[var(--text-primary)] outline-none text-sm placeholder:text-[var(--text-muted)]"
+                    />
+                    <kbd className="px-1.5 py-0.5 text-[11px] font-mono rounded border border-[var(--border)] bg-[var(--bg-input)] text-[var(--text-muted)]">Esc</kbd>
+                </div>
+
+                <ul ref={listRef} className="max-h-[420px] overflow-y-auto py-1" role="listbox">
+                    {ranked.length === 0 ? (
+                        <li className="px-4 py-6 text-center text-sm text-[var(--text-secondary)]">No results</li>
+                    ) : grouped.map((g) => (
+                        <li key={g.section}>
+                            <div className="px-4 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                                {g.section}
+                            </div>
+                            <ul>
+                                {g.items.map((cmd) => {
+                                    runningIdx++;
+                                    const idx = runningIdx;
+                                    const active = idx === activeIdx;
+                                    return (
+                                        <li key={cmd.id}>
+                                            <button
+                                                role="option"
+                                                aria-selected={active}
+                                                data-idx={idx}
+                                                onMouseEnter={() => setActiveIdx(idx)}
+                                                onClick={() => { onClose(); cmd.run(); }}
+                                                className={`w-full flex items-center gap-3 px-4 py-2 text-left transition-colors ${active ? "bg-[var(--bg-hover)]" : ""}`}
+                                            >
+                                                <span className={`material-symbols-outlined text-[18px] shrink-0 ${active ? "text-[var(--accent)]" : "text-[var(--text-secondary)]"}`}>
+                                                    {cmd.icon ?? "chevron_right"}
+                                                </span>
+                                                <span className="flex-1 min-w-0 text-sm text-[var(--text-primary)] truncate">{cmd.label}</span>
+                                                {cmd.hint && (
+                                                    <span className="text-[11px] text-[var(--text-muted)] tabular-nums truncate ml-2 shrink-0">
+                                                        {cmd.hint}
+                                                    </span>
+                                                )}
+                                            </button>
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                        </li>
+                    ))}
+                </ul>
+
+                <div className="px-4 py-1.5 text-[10px] text-[var(--text-muted)] border-t border-[var(--border-subtle)] bg-[var(--bg-titlebar)] flex items-center gap-3">
+                    <span><kbd className="px-1 font-mono rounded border border-[var(--border)] bg-[var(--bg-input)]">↑↓</kbd> navigate</span>
+                    <span><kbd className="px-1 font-mono rounded border border-[var(--border)] bg-[var(--bg-input)]">↵</kbd> run</span>
+                    <span className="ml-auto">{ranked.length} {ranked.length === 1 ? "result" : "results"}</span>
+                </div>
+            </div>
+        </div>
+    );
+}

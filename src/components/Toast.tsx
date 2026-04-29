@@ -49,8 +49,8 @@ export function Toast({ message, isVisible, onHide, duration = 2000, type = 'suc
 
     return (
         <div
-            role="status"
-            aria-live="polite"
+            role={type === "error" ? "alert" : "status"}
+            aria-live={type === "error" ? "assertive" : "polite"}
             aria-atomic="true"
             className={`fixed bottom-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg
                 bg-[var(--bg-secondary)] border border-[var(--border-subtle)]

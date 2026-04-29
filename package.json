@@ -1,7 +1,7 @@
 {
   "name": "marklite",
   "private": true,
-  "version": "0.5.1",
+  "version": "0.6.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,17 +16,23 @@
     "@tauri-apps/plugin-fs": "^2.4.4",
     "@tauri-apps/plugin-opener": "^2",
     "jspdf": "^4.0.0",
+    "katex": "^0.16.45",
+    "mermaid": "^11.14.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-markdown": "^10.1.0",
     "rehype-highlight": "^7.0.2",
+    "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
-    "tailwindcss": "^4.1.18"
+    "remark-math": "^6.0.0",
+    "tailwindcss": "^4.1.18",
+    "turndown": "^7.2.4"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
+    "@types/turndown": "^5.0.6",
     "@vitejs/plugin-react": "^4.6.0",
     "sharp": "^0.34.5",
     "typescript": "~5.8.3",

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { listen, TauriEvent } from "@tauri-apps/api/event";
+import { stat } from "@tauri-apps/plugin-fs";
 
 import { ThemeProvider } from "./context/ThemeContext";
 import { TitleBar } from "./components/TitleBar";
@@ -9,11 +10,35 @@ import { WelcomeScreen } from "./components/WelcomeScreen";
 import { MarkdownPreview } from "./components/MarkdownPreview";
 import { CodeEditor } from "./components/CodeEditor";
 import { StatusBar } from "./components/StatusBar";
-import { ModeToggle } from "./components/ModeToggle";
+import { ModeToggle, type ViewMode } from "./components/ModeToggle";
 import { FileExplorer } from "./components/FileExplorer";
 import { TableOfContents } from "./components/TableOfContents";
 import { Toast, ToastType } from "./components/Toast";
 import { UnsavedChangesDialog } from "./components/UnsavedChangesDialog";
+import { SplitDivider } from "./components/SplitDivider";
+import { createScrollSync } from "./utils/scrollSync";
+import { ShortcutCheatsheet } from "./components/ShortcutCheatsheet";
+import { CommandPalette, type PaletteCommand } from "./components/CommandPalette";
+import { SettingsModal } from "./components/SettingsModal";
+import { getRecentFiles } from "./utils/persistence";
+import {
+  addRecentFile,
+  getAIConfig,
+  getAutoSave,
+  getFocusMode,
+  getLastFile,
+  getSavedViewMode,
+  getSplitRatio,
+  getToolbarEnabled,
+  getTypewriterMode,
+  setAutoSave,
+  setFocusMode,
+  setLastFile,
+  setSavedViewMode,
+  setSplitRatio,
+  setToolbarEnabled,
+  setTypewriterMode,
+} from "./utils/persistence";
 
 interface FileData {
   path: string;
@@ -22,8 +47,6 @@ interface FileData {
   size: number;
   line_count: number;
 }
-
-type ViewMode = "preview" | "code";
 
 // Utility function to count words in text
 const getWordCount = (text: string): number => {
@@ -40,7 +63,18 @@ function AppContent() {
   const [fileSize, setFileSize] = useState<number>(0);
 
   // UI state
-  const [mode, setMode] = useState<ViewMode>("preview");
+  const [mode, setMode] = useState<ViewMode>(() => getSavedViewMode());
+  const [showCheatsheet, setShowCheatsheet] = useState(false);
+  const [showPalette, setShowPalette] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [splitRatio, setSplitRatioState] = useState<number>(() => getSplitRatio());
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState<boolean>(() => getAutoSave());
+  const [aiConfig, setAiConfigState] = useState(() => getAIConfig());
+  const [focusModeEnabled, setFocusModeEnabled] = useState<boolean>(() => getFocusMode());
+  const [typewriterModeEnabled, setTypewriterModeEnabled] = useState<boolean>(() => getTypewriterMode());
+  const [toolbarVisible, setToolbarVisible] = useState<boolean>(() => getToolbarEnabled());
+  const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [externalChange, setExternalChange] = useState<{ kind: "modified" | "deleted"; lastMtime: number } | null>(null);
   const [cursorPosition, setCursorPosition] = useState({ line: 1, col: 1 });
   const [isLoading, setIsLoading] = useState(false);
 
@@ -60,12 +94,43 @@ function AppContent() {
 
   // Export HTML content ref - captures from visible preview
   const previewRef = useRef<HTMLDivElement>(null);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
+
+  // Bidirectional scroll sync between editor and preview (split mode only).
+  // Singleton instance — one sync controller for the lifetime of the app.
+  const scrollSyncRef = useRef(createScrollSync());
+
+  // Enable/disable based on view mode
+  useEffect(() => {
+    scrollSyncRef.current.setEnabled(mode === "split");
+  }, [mode]);
+
+  const registerCodeScroller = useCallback(
+    (s: import("./utils/scrollSync").Scroller | null) => scrollSyncRef.current.register("code", s),
+    []
+  );
+  const registerPreviewScroller = useCallback(
+    (s: import("./utils/scrollSync").Scroller | null) => scrollSyncRef.current.register("preview", s),
+    []
+  );
+  const onCodeScrollFraction = useCallback(
+    (f: number) => scrollSyncRef.current.notify("code", f),
+    []
+  );
+  const onPreviewScrollFraction = useCallback(
+    (f: number) => scrollSyncRef.current.notify("preview", f),
+    []
+  );
 
   // Derived state
   const isDirty = content !== originalContent;
   const lineCount = useMemo(() => content.split("\n").length, [content]);
   const hasFile = filePath !== null;
   const wordCount = useMemo(() => getWordCount(content), [content]);
+  const charCount = useMemo(() => content.length, [content]);
+  // Average adult reading speed for prose: ~200 wpm. Markdown markup inflates
+  // word count slightly, but the rough number is what users actually want.
+  const readingTimeMin = useMemo(() => wordCount / 200, [wordCount]);
 
   // Show toast helper
   const showToast = useCallback((message: string, type: ToastType = 'success') => {
@@ -82,7 +147,9 @@ function AppContent() {
       setContent(fileData.content);
       setOriginalContent(fileData.content);
       setFileSize(fileData.size);
-      setMode("preview");
+      // Track recents + last-opened for restore-on-launch
+      addRecentFile(fileData.path, fileData.name);
+      setLastFile(fileData.path);
     } catch (err) {
       console.error("Failed to load file:", err);
       showToast("Failed to open file", "error");
@@ -90,6 +157,167 @@ function AppContent() {
       setIsLoading(false);
     }
   }, [showToast]);
+
+  // Persist view mode + restore last file on mount
+  useEffect(() => {
+    setSavedViewMode(mode);
+  }, [mode]);
+
+  useEffect(() => {
+    setSplitRatio(splitRatio);
+  }, [splitRatio]);
+
+  useEffect(() => {
+    setAutoSave(autoSaveEnabled);
+  }, [autoSaveEnabled]);
+
+  useEffect(() => { setFocusMode(focusModeEnabled); }, [focusModeEnabled]);
+  useEffect(() => { setTypewriterMode(typewriterModeEnabled); }, [typewriterModeEnabled]);
+  useEffect(() => { setToolbarEnabled(toolbarVisible); }, [toolbarVisible]);
+
+  // Cross-component event listeners — settings menu and command palette toggle these
+  useEffect(() => {
+    const handlers: Array<[string, (e: Event) => void]> = [
+      ["marklite:focus-toggle", (e) => setFocusModeEnabled(!!(e as CustomEvent).detail?.enabled)],
+      ["marklite:typewriter-toggle", (e) => setTypewriterModeEnabled(!!(e as CustomEvent).detail?.enabled)],
+      ["marklite:toolbar-toggle", (e) => setToolbarVisible(!!(e as CustomEvent).detail?.enabled)],
+    ];
+    handlers.forEach(([k, h]) => window.addEventListener(k, h));
+
+    // Re-read AI config when settings modal closes — cheap, single localStorage read
+    const onStorage = () => setAiConfigState(getAIConfig());
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      handlers.forEach(([k, h]) => window.removeEventListener(k, h));
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+
+  // Listen for SettingsMenu toggling auto-save (cross-component event keeps both sides in sync)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (typeof detail?.enabled === "boolean") setAutoSaveEnabled(detail.enabled);
+    };
+    window.addEventListener("marklite:autosave-toggle", handler);
+    return () => window.removeEventListener("marklite:autosave-toggle", handler);
+  }, []);
+
+  // External-change detection: poll file mtime every 4s. If the file was modified
+  // by something outside MarkLite, we either silently reload (clean buffer) or
+  // banner the user with a choice (dirty buffer). If it was deleted, banner only.
+  const lastMtimeRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!filePath) {
+      lastMtimeRef.current = null;
+      setExternalChange(null);
+      return;
+    }
+    let cancelled = false;
+    let didInit = false;
+
+    const tick = async () => {
+      if (cancelled || !filePath) return;
+      try {
+        const s = await stat(filePath);
+        const mtime = s.mtime ? new Date(s.mtime).getTime() : 0;
+        if (!didInit) {
+          lastMtimeRef.current = mtime;
+          didInit = true;
+          return;
+        }
+        if (mtime !== lastMtimeRef.current) {
+          // Changed externally
+          if (content === originalContent) {
+            // Silently reload — buffer was clean
+            try {
+              const fileData = await invoke<FileData>("read_file", { path: filePath });
+              setContent(fileData.content);
+              setOriginalContent(fileData.content);
+              setFileSize(fileData.size);
+              lastMtimeRef.current = mtime;
+            } catch {
+              setExternalChange({ kind: "deleted", lastMtime: mtime });
+            }
+          } else {
+            setExternalChange({ kind: "modified", lastMtime: mtime });
+          }
+        }
+      } catch {
+        // File no longer exists
+        if (!externalChange) setExternalChange({ kind: "deleted", lastMtime: lastMtimeRef.current ?? 0 });
+      }
+    };
+
+    tick();
+    const id = window.setInterval(tick, 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [filePath, content, originalContent, externalChange]);
+
+  const dismissExternalChange = useCallback(() => setExternalChange(null), []);
+  const reloadFromDisk = useCallback(async () => {
+    if (!filePath) return;
+    try {
+      const fileData = await invoke<FileData>("read_file", { path: filePath });
+      setContent(fileData.content);
+      setOriginalContent(fileData.content);
+      setFileSize(fileData.size);
+      const s = await stat(filePath);
+      lastMtimeRef.current = s.mtime ? new Date(s.mtime).getTime() : 0;
+      setExternalChange(null);
+    } catch (err) {
+      console.error("Reload failed:", err);
+      showToast("Failed to reload file", "error");
+    }
+  }, [filePath, showToast]);
+
+  // Auto-save: debounced 1.5s after typing stops, only if a file is open and dirty
+  useEffect(() => {
+    if (!autoSaveEnabled) return;
+    if (!filePath) return;
+    if (content === originalContent) return;
+
+    const timer = window.setTimeout(() => {
+      setAutoSaveStatus("saving");
+      invoke("save_file", { path: filePath, content })
+        .then(() => {
+          setOriginalContent(content);
+          setAutoSaveStatus("saved");
+          window.setTimeout(() => setAutoSaveStatus((s) => (s === "saved" ? "idle" : s)), 1500);
+        })
+        .catch((err) => {
+          console.error("Auto-save failed:", err);
+          setAutoSaveStatus("error");
+        });
+    }, 1500);
+
+    return () => window.clearTimeout(timer);
+  }, [autoSaveEnabled, content, originalContent, filePath]);
+
+  useEffect(() => {
+    // Restore last opened file once on app launch
+    const last = getLastFile();
+    if (last) {
+      // Fire-and-forget; failures are silent (file may have been moved/deleted)
+      invoke<FileData>("read_file", { path: last })
+        .then((fileData) => {
+          setFilePath(fileData.path);
+          setFileName(fileData.name);
+          setContent(fileData.content);
+          setOriginalContent(fileData.content);
+          setFileSize(fileData.size);
+        })
+        .catch(() => {
+          setLastFile(null);
+        });
+    }
+    // Run only once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Load file with unsaved changes protection
   const loadFile = useCallback(async (path: string) => {
@@ -102,7 +330,19 @@ function AppContent() {
     }
   }, [content, originalContent, loadFileDirect]);
 
-  // Handlers for unsaved-before-open dialog
+  // New file: clears buffer. Used by handleNewFile and the dialog handlers.
+  const startBlankFile = useCallback(() => {
+    setFilePath(null);
+    setFileName("Untitled.md");
+    setContent("");
+    setOriginalContent("");
+    setFileSize(0);
+    setLastFile(null);
+    setMode("code");
+  }, []);
+
+  // Handlers for unsaved-before-open dialog. Supports a "__NEW__" sentinel
+  // so the New File action routes through the same confirmation flow.
   const handleSaveAndOpen = useCallback(async () => {
     setShowUnsavedBeforeOpen(false);
     if (filePath) {
@@ -115,19 +355,23 @@ function AppContent() {
         return;
       }
     }
-    if (pendingFilePath) {
+    if (pendingFilePath === "__NEW__") {
+      startBlankFile();
+    } else if (pendingFilePath) {
       await loadFileDirect(pendingFilePath);
-      setPendingFilePath(null);
     }
-  }, [filePath, content, pendingFilePath, loadFileDirect, showToast]);
+    setPendingFilePath(null);
+  }, [filePath, content, pendingFilePath, loadFileDirect, showToast, startBlankFile]);
 
   const handleDiscardAndOpen = useCallback(async () => {
     setShowUnsavedBeforeOpen(false);
-    if (pendingFilePath) {
+    if (pendingFilePath === "__NEW__") {
+      startBlankFile();
+    } else if (pendingFilePath) {
       await loadFileDirect(pendingFilePath);
-      setPendingFilePath(null);
     }
-  }, [pendingFilePath, loadFileDirect]);
+    setPendingFilePath(null);
+  }, [pendingFilePath, loadFileDirect, startBlankFile]);
 
   const handleCancelOpen = useCallback(() => {
     setShowUnsavedBeforeOpen(false);
@@ -162,6 +406,37 @@ function AppContent() {
     };
   }, [loadFile]);
 
+  // Wikilink click: resolve target relative to the current file's folder.
+  // Tries `<target>.md` first, then `<target>` literal. Silently fails if neither exists.
+  const handleWikilinkClick = useCallback(async (target: string) => {
+    if (!filePath) return;
+    const lastSep = Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"));
+    const dir = lastSep > 0 ? filePath.slice(0, lastSep) : "";
+    const sep = filePath.includes("\\") ? "\\" : "/";
+    const candidates = [
+      `${dir}${sep}${target}.md`,
+      `${dir}${sep}${target}.markdown`,
+      `${dir}${sep}${target}`,
+    ];
+    for (const c of candidates) {
+      try {
+        await stat(c);
+        loadFile(c);
+        return;
+      } catch {/* try next */}
+    }
+    showToast(`Could not resolve [[${target}]]`, "error");
+  }, [filePath, loadFile, showToast]);
+
+  const handleNewFile = useCallback(() => {
+    if (content !== originalContent) {
+      setPendingFilePath("__NEW__");
+      setShowUnsavedBeforeOpen(true);
+    } else {
+      startBlankFile();
+    }
+  }, [content, originalContent, startBlankFile]);
+
   // Open file dialog
   const handleOpenFile = useCallback(async () => {
     try {
@@ -183,43 +458,43 @@ function AppContent() {
     }
   }, [loadFile]);
 
-  // Save file
+  // Save As — always prompts for a new path, even if a path is already set.
+  const handleSaveAs = useCallback(async () => {
+    const selected = await save({
+      filters: [{ name: "Markdown", extensions: ["md"] }],
+      defaultPath: fileName ?? undefined,
+    });
+    if (!selected) return;
+    try {
+      await invoke("save_file", { path: selected, content });
+      setFilePath(selected);
+      const name = selected.replace(/\\/g, "/").split("/").pop() || "Untitled";
+      setFileName(name);
+      setOriginalContent(content);
+      addRecentFile(selected, name);
+      setLastFile(selected);
+      showToast("File saved", "success");
+    } catch (err) {
+      console.error("Failed to save file:", err);
+      showToast("Failed to save file", "error");
+    }
+  }, [content, fileName, showToast]);
+
+  // Save file (Save As if no path yet)
   const handleSaveFile = useCallback(async () => {
     if (!filePath) {
-      // Save as new file
-      const selected = await save({
-        filters: [
-          {
-            name: "Markdown",
-            extensions: ["md"],
-          },
-        ],
-      });
-
-      if (selected) {
-        try {
-          await invoke("save_file", { path: selected, content });
-          setFilePath(selected);
-          const name = selected.replace(/\\/g, '/').split('/').pop() || 'Untitled';
-          setFileName(name);
-          setOriginalContent(content);
-          showToast("File saved", "success");
-        } catch (err) {
-          console.error("Failed to save file:", err);
-          showToast("Failed to save file", "error");
-        }
-      }
-    } else {
-      try {
-        await invoke("save_file", { path: filePath, content });
-        setOriginalContent(content);
-        showToast("File saved", "success");
-      } catch (err) {
-        console.error("Failed to save file:", err);
-        showToast("Failed to save file", "error");
-      }
+      await handleSaveAs();
+      return;
     }
-  }, [filePath, content, showToast]);
+    try {
+      await invoke("save_file", { path: filePath, content });
+      setOriginalContent(content);
+      showToast("File saved", "success");
+    } catch (err) {
+      console.error("Failed to save file:", err);
+      showToast("Failed to save file", "error");
+    }
+  }, [filePath, content, showToast, handleSaveAs]);
 
   // Listen for file open from CLI (when app is opened with a file by double-click)
   useEffect(() => {
@@ -245,9 +520,13 @@ function AppContent() {
     };
   }, [loadFile]);
 
-  // Toggle mode
+  // Toggle between preview and code (skips split — split has its own shortcut)
   const handleToggleMode = useCallback(() => {
-    setMode((prev) => (prev === "preview" ? "code" : "preview"));
+    setMode((prev) => (prev === "code" ? "preview" : "code"));
+  }, []);
+
+  const handleToggleSplit = useCallback(() => {
+    setMode((prev) => (prev === "split" ? "preview" : "split"));
   }, []);
 
   // Toggle file explorer (mutually exclusive with TOC)
@@ -327,18 +606,56 @@ function AppContent() {
           handleSaveFile();
         }
       }
-      // Ctrl+E - Toggle mode (without Shift)
+      // Ctrl+Shift+S - Save As
+      if (e.ctrlKey && e.shiftKey && (e.key === "s" || e.key === "S")) {
+        e.preventDefault();
+        if (hasFile || content) {
+          handleSaveAs();
+        }
+      }
+      // Ctrl+N - New file
+      if (e.ctrlKey && !e.shiftKey && e.key === "n") {
+        e.preventDefault();
+        handleNewFile();
+      }
+      // Ctrl+E - Toggle preview/code mode (without Shift)
       if (e.ctrlKey && !e.shiftKey && e.key === "e") {
         e.preventDefault();
         if (hasFile) {
           handleToggleMode();
         }
       }
+      // Ctrl+\ - Toggle split view
+      if (e.ctrlKey && !e.shiftKey && e.key === "\\") {
+        e.preventDefault();
+        if (hasFile) {
+          handleToggleSplit();
+        }
+      }
+      // ? — Show cheatsheet (only when no input is focused)
+      if (e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const target = e.target as HTMLElement | null;
+        const isTyping = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+        if (!isTyping) {
+          e.preventDefault();
+          setShowCheatsheet(true);
+        }
+      }
+      // Ctrl+P / Ctrl+Shift+P — command palette
+      if ((e.ctrlKey || e.metaKey) && (e.key === "p" || e.key === "P")) {
+        e.preventDefault();
+        setShowPalette(true);
+      }
+      // Ctrl+, — Settings
+      if ((e.ctrlKey || e.metaKey) && e.key === ",") {
+        e.preventDefault();
+        setShowSettings(true);
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleOpenFile, handleSaveFile, handleToggleMode, handleToggleFileExplorer, handleToggleTOC, hasFile, content]);
+  }, [handleOpenFile, handleSaveFile, handleSaveAs, handleNewFile, handleToggleMode, handleToggleSplit, handleToggleFileExplorer, handleToggleTOC, hasFile, content]);
 
   // Get export HTML from the visible preview on demand (avoids duplicate rendering)
   const getExportHtml = useCallback((): string => {
@@ -348,6 +665,189 @@ function AppContent() {
     return "";
   }, []);
 
+  // Build the command palette item list. Rebuilds on relevant state changes —
+  // recent files, current file, current view mode, toggles.
+  const paletteItems = useMemo<PaletteCommand[]>(() => {
+    const items: PaletteCommand[] = [];
+
+    // === File ===
+    items.push({
+      id: "file.new",
+      label: "New file",
+      hint: "Ctrl+N",
+      section: "File",
+      icon: "edit_note",
+      run: handleNewFile,
+    });
+    items.push({
+      id: "file.open",
+      label: "Open file…",
+      hint: "Ctrl+O",
+      section: "File",
+      icon: "folder_open",
+      run: handleOpenFile,
+    });
+    items.push({
+      id: "file.save",
+      label: "Save",
+      hint: "Ctrl+S",
+      section: "File",
+      icon: "save",
+      run: handleSaveFile,
+    });
+    items.push({
+      id: "file.saveas",
+      label: "Save As…",
+      hint: "Ctrl+Shift+S",
+      section: "File",
+      icon: "save_as",
+      run: handleSaveAs,
+    });
+
+    // === View ===
+    items.push({
+      id: "view.preview",
+      label: "Switch to Reader mode",
+      hint: "Ctrl+E",
+      section: "View",
+      icon: "visibility",
+      run: () => setMode("preview"),
+    });
+    items.push({
+      id: "view.code",
+      label: "Switch to Code editor",
+      section: "View",
+      icon: "code",
+      run: () => setMode("code"),
+    });
+    items.push({
+      id: "view.split",
+      label: "Toggle Split view",
+      hint: "Ctrl+\\",
+      section: "View",
+      icon: "vertical_split",
+      run: handleToggleSplit,
+    });
+    items.push({
+      id: "view.explorer",
+      label: "Toggle file explorer",
+      hint: "Ctrl+Shift+E",
+      section: "View",
+      icon: "folder",
+      run: handleToggleFileExplorer,
+    });
+    items.push({
+      id: "view.toc",
+      label: "Toggle outline",
+      hint: "Ctrl+Shift+O",
+      section: "View",
+      icon: "format_list_bulleted",
+      run: handleToggleTOC,
+    });
+
+    // === Toggles ===
+    items.push({
+      id: "toggle.focus",
+      label: focusModeEnabled ? "Disable Focus mode" : "Enable Focus mode",
+      section: "Toggles",
+      icon: "center_focus_strong",
+      keywords: "dim non-active line",
+      run: () => setFocusModeEnabled((v) => !v),
+    });
+    items.push({
+      id: "toggle.typewriter",
+      label: typewriterModeEnabled ? "Disable Typewriter mode" : "Enable Typewriter mode",
+      section: "Toggles",
+      icon: "keyboard",
+      keywords: "scroll caret center",
+      run: () => setTypewriterModeEnabled((v) => !v),
+    });
+    items.push({
+      id: "toggle.toolbar",
+      label: toolbarVisible ? "Hide formatting toolbar" : "Show formatting toolbar",
+      section: "Toggles",
+      icon: "format_paint",
+      run: () => setToolbarVisible((v) => !v),
+    });
+    items.push({
+      id: "toggle.autosave",
+      label: autoSaveEnabled ? "Disable auto-save" : "Enable auto-save",
+      section: "Toggles",
+      icon: "save_as",
+      run: () => setAutoSaveEnabled((v) => !v),
+    });
+
+    items.push({
+      id: "settings.open",
+      label: "Open Settings…",
+      hint: "Ctrl+,",
+      section: "Toggles",
+      icon: "settings",
+      run: () => setShowSettings(true),
+    });
+
+    // === Help ===
+    items.push({
+      id: "help.cheatsheet",
+      label: "Show keyboard shortcuts",
+      hint: "?",
+      section: "Help",
+      icon: "keyboard",
+      run: () => setShowCheatsheet(true),
+    });
+
+    // === Recent files ===
+    const recents = getRecentFiles();
+    for (const r of recents) {
+      if (r.path === filePath) continue; // current file
+      items.push({
+        id: `recent.${r.path}`,
+        label: r.name,
+        hint: r.path,
+        section: "Recent files",
+        icon: "description",
+        keywords: r.path,
+        run: () => loadFile(r.path),
+      });
+    }
+
+    // === Headings of current document ===
+    if (content) {
+      const lines = content.split("\n");
+      lines.forEach((line, idx) => {
+        const m = line.match(/^(#{1,6})\s+(.+)$/);
+        if (m) {
+          const level = m[1].length;
+          const text = m[2].trim();
+          items.push({
+            id: `head.${idx}`,
+            label: text,
+            hint: `H${level}`,
+            section: "Headings",
+            icon: level === 1 ? "title" : level === 2 ? "format_h2" : "format_h3",
+            keywords: "jump heading",
+            run: () => {
+              // Switch to preview if in code-only mode, then scroll to heading
+              setMode((prev) => (prev === "code" ? "preview" : prev));
+              requestAnimationFrame(() => {
+                const slug = text.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-");
+                const el = document.getElementById(slug);
+                el?.scrollIntoView({ behavior: "smooth", block: "start" });
+              });
+            },
+          });
+        }
+      });
+    }
+
+    return items;
+  }, [
+    handleNewFile, handleOpenFile, handleSaveFile, handleSaveAs,
+    handleToggleSplit, handleToggleFileExplorer, handleToggleTOC,
+    loadFile, filePath, content,
+    focusModeEnabled, typewriterModeEnabled, toolbarVisible, autoSaveEnabled,
+  ]);
+
   return (
     <div className="h-screen flex flex-col bg-[var(--bg-primary)] overflow-hidden transition-colors">
       <TitleBar
@@ -355,39 +855,99 @@ function AppContent() {
         isDirty={isDirty}
         filePath={filePath ?? undefined}
         onOpenFile={handleOpenFile}
+        onNewFile={handleNewFile}
         onSaveFile={handleSaveFile}
         getExportHtml={getExportHtml}
+        onExportSuccess={(fmt) => showToast(`Exported as ${fmt}`, "success")}
+        onExportError={(fmt) => showToast(`Failed to export ${fmt}`, "error")}
       />
 
+      {externalChange && hasFile && (
+        <div role="alert" className="px-4 py-2 bg-[var(--status-unsaved)]/15 border-b border-[var(--status-unsaved)]/30 flex items-center gap-3 text-sm text-[var(--text-primary)] animate-fade-in-down">
+          <span className="material-symbols-outlined text-[18px] text-[var(--status-unsaved)]">warning</span>
+          <span className="flex-1">
+            {externalChange.kind === "modified"
+              ? "This file was modified outside MarkLite."
+              : "This file was deleted or moved."}
+          </span>
+          {externalChange.kind === "modified" && (
+            <button onClick={reloadFromDisk} className="px-3 py-1 text-xs rounded-[var(--radius-sm)] bg-[var(--accent)] text-[var(--accent-text)] hover:opacity-90">
+              Reload from disk
+            </button>
+          )}
+          <button onClick={dismissExternalChange} className="px-3 py-1 text-xs rounded-[var(--radius-sm)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]">
+            Keep mine
+          </button>
+        </div>
+      )}
+
       {!hasFile ? (
-        <WelcomeScreen onOpenFile={handleOpenFile} onFileDrop={handleFileDrop} />
+        <WelcomeScreen onOpenFile={handleOpenFile} onNewFile={handleNewFile} onFileDrop={handleFileDrop} onOpenRecent={loadFile} />
       ) : (
         <>
-          {/* Both views rendered; toggle via display to preserve scroll/state */}
-          <div className="flex-1 overflow-hidden flex flex-col" style={{ display: mode === "preview" ? "flex" : "none" }}>
-            <MarkdownPreview
-              content={content}
-              fileName={fileName || ""}
-              lineCount={lineCount}
-              fileSize={fileSize}
-              onEditClick={handleToggleMode}
-              onLineChange={(line) => setPreviewLine(line)}
-              filePath={filePath}
-              markdownBodyRef={previewRef}
-            />
-          </div>
-          <div className="flex-1 overflow-hidden flex flex-col" style={{ display: mode === "code" ? "flex" : "none" }}>
-            <CodeEditor
-              content={content}
-              onChange={handleContentChange}
-              onCursorChange={(line, col) => setCursorPosition({ line, col })}
-              onImagePaste={handleImagePaste}
-              onError={handleError}
-              filePath={filePath}
-            />
+          {/* Split-aware layout. Both views always mounted; CSS toggles their display
+              and width so editor/preview state (scroll, selection) is preserved across
+              mode switches. */}
+          <div ref={splitContainerRef} className="flex-1 overflow-hidden flex flex-row">
+            <div
+              data-split-left
+              className="overflow-hidden flex flex-col"
+              style={{
+                display: mode === "code" || mode === "split" ? "flex" : "none",
+                flexBasis: mode === "split" ? `${splitRatio * 100}%` : "100%",
+                flexGrow: mode === "split" ? 0 : 1,
+                flexShrink: 0,
+                minWidth: 0,
+              }}
+            >
+              <CodeEditor
+                content={content}
+                onChange={handleContentChange}
+                onCursorChange={(line, col) => setCursorPosition({ line, col })}
+                onImagePaste={handleImagePaste}
+                onError={handleError}
+                filePath={filePath}
+                onScrollFraction={onCodeScrollFraction}
+                registerScroller={registerCodeScroller}
+                focusMode={focusModeEnabled}
+                typewriterMode={typewriterModeEnabled}
+                showToolbar={toolbarVisible}
+                aiConfig={aiConfig}
+              />
+            </div>
+
+            {mode === "split" && (
+              <SplitDivider onDrag={setSplitRatioState} containerRef={splitContainerRef} />
+            )}
+
+            <div
+              className="overflow-hidden flex flex-col"
+              style={{
+                display: mode === "preview" || mode === "split" ? "flex" : "none",
+                flexBasis: mode === "split" ? `${(1 - splitRatio) * 100}%` : "100%",
+                flexGrow: mode === "split" ? 0 : 1,
+                flexShrink: 0,
+                minWidth: 0,
+              }}
+            >
+              <MarkdownPreview
+                content={content}
+                fileName={fileName || ""}
+                lineCount={lineCount}
+                fileSize={fileSize}
+                onEditClick={handleToggleMode}
+                onLineChange={(line) => setPreviewLine(line)}
+                filePath={filePath}
+                markdownBodyRef={previewRef}
+                onContentChange={handleContentChange}
+                onScrollFraction={onPreviewScrollFraction}
+                registerScroller={registerPreviewScroller}
+                onWikilinkClick={handleWikilinkClick}
+              />
+            </div>
           </div>
 
-          <ModeToggle mode={mode} onToggle={handleToggleMode} />
+          <ModeToggle mode={mode} onSetMode={setMode} />
 
           {/* Sidebar Panels */}
           <FileExplorer
@@ -400,6 +960,7 @@ function AppContent() {
             isOpen={showTOC}
             content={content}
             onClose={closeAllPanels}
+            activeLine={mode === "preview" ? previewLine : cursorPosition.line}
           />
 
 <StatusBar
@@ -412,6 +973,9 @@ function AppContent() {
             onToggleFileExplorer={handleToggleFileExplorer}
             onToggleTOC={handleToggleTOC}
             wordCount={wordCount}
+            charCount={charCount}
+            readingTimeMin={readingTimeMin}
+            autoSaveStatus={autoSaveStatus}
           />
         </>
       )}
@@ -433,6 +997,16 @@ function AppContent() {
           </div>
         </div>
       )}
+
+      <ShortcutCheatsheet isOpen={showCheatsheet} onClose={() => setShowCheatsheet(false)} />
+      <CommandPalette isOpen={showPalette} items={paletteItems} onClose={() => setShowPalette(false)} />
+      <SettingsModal
+        isOpen={showSettings}
+        onClose={() => {
+          setShowSettings(false);
+          setAiConfigState(getAIConfig()); // pick up endpoint/key edits immediately
+        }}
+      />
 
       {/* Toast notifications */}
       <Toast

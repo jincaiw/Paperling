@@ -47,16 +47,56 @@ I wanted a simple, lightweight solution that renders markdown beautifully while 
 
 ## Features
 
-- **Clean Interface** - Minimal UI that stays out of your way
-- **Live Preview** - Switch between reader and code modes instantly with Ctrl+E
-- **Syntax Highlighting** - Full markdown syntax highlighting in the editor
-- **Three Themes** - Dark, Light, and Paper themes to match your preference
-- **Five Fonts** - Inter, Merriweather, Lora, Source Serif, Fira Sans
-- **Adjustable Font Size** - Small, Medium, and Large options
-- **File Explorer** - Quick access to markdown files in the current directory
-- **Table of Contents** - Navigate large documents easily
-- **Native Performance** - Built with Tauri for a lightweight, fast experience
-- **Cross-Platform** - Windows, macOS, and Linux support
+### Writing
+
+- **Clean Interface** — minimal UI that stays out of your way
+- **Reader / Code / Split view** — Ctrl+E to toggle, Ctrl+\\ for split with bidirectional scroll sync
+- **Focus mode** — dim non-active lines so you can think
+- **Typewriter mode** — caret stays vertically centered
+- **Formatting toolbar** (toggleable) and shortcuts: Ctrl+B / Ctrl+I / Ctrl+K / Ctrl+/
+- **Slash commands** — type `/` at line start for headings, lists, tables, math, mermaid, callouts, and more
+- **Auto-pair** brackets, quotes, and code marks; **list/quote continuation** on Enter
+- **Tab in tables** moves between cells; auto-creates new rows
+- **Find & Replace** (Ctrl+F / Ctrl+H) with regex and match counter
+- **Smart paste** — URL → link, rich HTML → markdown, TSV → GFM table
+
+### Preview
+
+- **GitHub Flavored Markdown** with task lists, tables, strikethrough
+- **Code blocks** with syntax highlighting and one-click copy
+- **Math** via KaTeX (`$inline$`, `$$block$$`) — loaded only when needed
+- **Mermaid diagrams** (` ```mermaid `) — loaded only when needed
+- **Image lightbox** — click to zoom; lazy loading
+- **Interactive task checkboxes** — toggling writes back to source
+- **Heading anchors** with click-to-jump
+- **Wikilinks** `[[other-file]]` resolve in the same folder
+- **Frontmatter** rendered as an editable Properties card
+
+### Files & workflow
+
+- **Command palette** (Ctrl+P) — search commands, files, headings, toggles
+- **Cheatsheet** (`?`) — every shortcut categorized and searchable
+- **Settings modal** (Ctrl+,) — sidebar nav with Appearance / Editor / AI / About
+- **New File** (Ctrl+N) and **Save As** (Ctrl+Shift+S)
+- **Auto-save** (optional, debounced) with status indicator
+- **External-change detection** — reload or keep your version when the file changes outside the app
+- **Recent files** on the welcome screen — missing files marked
+- **Restore last opened file** on launch
+- **File Explorer** for the current folder
+- **Outline pane** that follows the cursor
+
+### Customization
+
+- **Four themes** — Dark, Light, Paper, GitHub
+- **Five fonts** — Inter, Merriweather, Lora, Source Serif, Fira Sans
+- **Three font sizes**
+- **WCAG-friendly** — visible focus rings, `prefers-reduced-motion` respected
+- **AI assist** (optional) — Ctrl+J on a selection; configure any OpenAI-compatible endpoint (Ollama, llama.cpp, OpenAI, etc.) in Settings → AI
+
+### Platform
+
+- **Native performance** — built with Tauri
+- **Cross-platform** — Windows, macOS, Linux
 
 ## Installation
 
@@ -94,11 +134,24 @@ bun run tauri build
 
 ## Keyboard Shortcuts
 
+A few essentials — press `?` inside the app for the full searchable list.
+
 | Action | Shortcut |
 |--------|----------|
-| Open File | Ctrl+O |
-| Save File | Ctrl+S |
-| Toggle Mode | Ctrl+E |
+| Command palette | Ctrl+P |
+| Cheatsheet | ? |
+| Settings | Ctrl+, |
+| New file | Ctrl+N |
+| Open file | Ctrl+O |
+| Save | Ctrl+S |
+| Save As | Ctrl+Shift+S |
+| Toggle Reader / Code | Ctrl+E |
+| Toggle Split view | Ctrl+\\ |
+| File explorer / Outline | Ctrl+Shift+E / Ctrl+Shift+O |
+| Find / Replace | Ctrl+F / Ctrl+H |
+| Bold / Italic / Link | Ctrl+B / Ctrl+I / Ctrl+K |
+| Toggle blockquote | Ctrl+/ |
+| AI assist | Ctrl+J |
 
 ## Tech Stack
 
