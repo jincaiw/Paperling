@@ -374,6 +374,7 @@ function AppContent() {
               onLineChange={(line) => setPreviewLine(line)}
               filePath={filePath}
               markdownBodyRef={previewRef}
+              onContentChange={handleContentChange}
             />
           </div>
           <div className="flex-1 overflow-hidden flex flex-col" style={{ display: mode === "code" ? "flex" : "none" }}>
