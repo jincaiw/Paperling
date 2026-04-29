@@ -99,6 +99,9 @@ export function TitleBar({ fileName, isDirty, filePath, onOpenFile, onSaveFile, 
                         <span className="text-[var(--text-primary)] font-semibold tracking-tight">
                             {fileName || "MarkLite"}
                         </span>
+                        {!fileName && (
+                            <span className="text-[var(--text-muted)] text-xs ml-1 hidden sm:inline">— drop a .md file or Ctrl+O</span>
+                        )}
                         {isDirty && (
                             <span className="text-[var(--status-unsaved)] ml-1 italic text-xs">— Edited</span>
                         )}

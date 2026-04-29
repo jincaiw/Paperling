@@ -87,18 +87,23 @@ export function StatusBar({
                     </div>
                 )}
                 {wordCount !== undefined && (
-                    <div className="hover:text-[var(--text-primary)] cursor-default transition-colors" title={charCount !== undefined ? `${charCount.toLocaleString()} characters` : undefined}>
+                    <div
+                        className="flex items-center gap-1 hover:text-[var(--text-primary)] cursor-default transition-colors"
+                        title={charCount !== undefined ? `${charCount.toLocaleString()} characters` : undefined}
+                    >
+                        <span className="material-symbols-outlined text-[14px] opacity-70">text_fields</span>
                         {wordCount.toLocaleString()} words
                     </div>
                 )}
                 {readingTimeMin !== undefined && readingTimeMin > 0 && (
-                    <div className="hover:text-[var(--text-primary)] cursor-default transition-colors" title="Estimated reading time at 200 wpm">
+                    <div
+                        className="flex items-center gap-1 hover:text-[var(--text-primary)] cursor-default transition-colors"
+                        title="Estimated reading time at 200 wpm"
+                    >
+                        <span className="material-symbols-outlined text-[14px] opacity-70">schedule</span>
                         {formatReadingTime(readingTimeMin)}
                     </div>
                 )}
-                <div className="hover:text-[var(--text-primary)] cursor-default transition-colors">
-                    UTF-8
-                </div>
             </div>
         </footer>
     );

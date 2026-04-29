@@ -1,4 +1,5 @@
 import { useMemo, useEffect, useRef } from "react";
+import { attachFocusTrap } from "../utils/focusTrap";
 
 interface TocItem {
     id: string;
@@ -59,8 +60,12 @@ export function TableOfContents({
 
         document.addEventListener("keydown", handleKeyDown);
         panelRef.current?.focus();
+        const detachTrap = attachFocusTrap(panelRef.current);
 
-        return () => document.removeEventListener("keydown", handleKeyDown);
+        return () => {
+            document.removeEventListener("keydown", handleKeyDown);
+            detachTrap();
+        };
     }, [isOpen, onClose]);
 
     const handleHeadingClick = (text: string, level: number) => {

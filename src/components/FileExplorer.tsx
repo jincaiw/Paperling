@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { attachFocusTrap } from "../utils/focusTrap";
 
 interface FileEntry {
     name: string;
@@ -41,7 +42,7 @@ export function FileExplorer({
         }
     }, [isOpen, currentFilePath]);
 
-    // Escape key to close and focus management
+    // Escape key to close and focus management + focus trap
     useEffect(() => {
         if (!isOpen) return;
 
@@ -53,11 +54,13 @@ export function FileExplorer({
         };
 
         document.addEventListener("keydown", handleKeyDown);
-
-        // Focus the panel when opened
         panelRef.current?.focus();
+        const detachTrap = attachFocusTrap(panelRef.current);
 
-        return () => document.removeEventListener("keydown", handleKeyDown);
+        return () => {
+            document.removeEventListener("keydown", handleKeyDown);
+            detachTrap();
+        };
     }, [isOpen, onClose]);
 
     const loadFiles = async (directory: string) => {
