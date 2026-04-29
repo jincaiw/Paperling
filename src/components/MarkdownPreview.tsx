@@ -3,7 +3,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { readFile } from "@tauri-apps/plugin-fs";
-import { parseFrontmatter } from "../utils/frontmatter";
+import { parseFrontmatter, serializeFrontmatter, type FrontmatterValue } from "../utils/frontmatter";
 import type { Scroller } from "../utils/scrollSync";
 import { MermaidBlock, isMermaidLanguage } from "./MermaidBlock";
 
@@ -43,6 +43,7 @@ interface MarkdownPreviewProps {
     onContentChange?: (newContent: string) => void;
     onScrollFraction?: (fraction: number) => void;
     registerScroller?: (scroller: Scroller | null) => void;
+    onWikilinkClick?: (target: string) => void;
 }
 
 /** Slugify heading text into a stable, URL-safe id (GitHub-style). */
@@ -213,32 +214,94 @@ function CodeBlock({ children, ...rest }: React.HTMLAttributes<HTMLPreElement>) 
     );
 }
 
-/** Render YAML frontmatter as a collapsible metadata card. */
-function FrontmatterCard({ data }: { data: Record<string, string | number | boolean | string[]> }) {
+/** Render YAML frontmatter as a collapsible, editable metadata card. */
+function FrontmatterCard({
+    data,
+    editable,
+    onChange,
+}: {
+    data: Record<string, FrontmatterValue>;
+    editable: boolean;
+    onChange?: (next: Record<string, FrontmatterValue>) => void;
+}) {
     const [collapsed, setCollapsed] = useState(false);
     const entries = Object.entries(data);
     if (entries.length === 0) return null;
 
-    const renderValue = (v: string | number | boolean | string[]) => {
+    const updateKey = (k: string, v: FrontmatterValue) => onChange?.({ ...data, [k]: v });
+
+    const renderValue = (k: string, v: FrontmatterValue) => {
         if (Array.isArray(v)) {
             return (
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-1 items-center">
                     {v.map((item, i) => (
-                        <span key={i} className="px-2 py-0.5 text-xs bg-[var(--bg-hover)] rounded border border-[var(--border-subtle)] text-[var(--text-primary)]">
+                        <span key={i} className="px-2 py-0.5 text-xs bg-[var(--bg-hover)] rounded-[var(--radius-sm)] border border-[var(--border-subtle)] text-[var(--text-primary)] flex items-center gap-1">
                             {item}
+                            {editable && (
+                                <button
+                                    type="button"
+                                    onClick={() => updateKey(k, v.filter((_, idx) => idx !== i))}
+                                    aria-label={`Remove ${item}`}
+                                    className="opacity-50 hover:opacity-100"
+                                >
+                                    <span className="material-symbols-outlined text-[12px]">close</span>
+                                </button>
+                            )}
                         </span>
                     ))}
+                    {editable && (
+                        <input
+                            type="text"
+                            placeholder="+ add"
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                    const val = e.currentTarget.value.trim();
+                                    if (val) {
+                                        updateKey(k, [...v, val]);
+                                        e.currentTarget.value = "";
+                                    }
+                                }
+                            }}
+                            className="px-1.5 py-0.5 text-xs bg-transparent border border-dashed border-[var(--border)] rounded-[var(--radius-sm)] text-[var(--text-secondary)] outline-none focus:border-[var(--accent)] w-20"
+                        />
+                    )}
                 </div>
             );
         }
         if (typeof v === "boolean") {
+            if (editable) {
+                return (
+                    <button
+                        type="button"
+                        onClick={() => updateKey(k, !v)}
+                        className={`relative inline-block w-9 h-5 rounded-full transition-colors ${v ? "bg-[var(--accent)]" : "bg-[var(--border)]"}`}
+                        aria-pressed={v}
+                    >
+                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${v ? "translate-x-4" : ""}`} />
+                    </button>
+                );
+            }
             return <span className="text-xs font-mono">{v ? "true" : "false"}</span>;
+        }
+        if (editable) {
+            return (
+                <input
+                    type={typeof v === "number" ? "number" : "text"}
+                    defaultValue={String(v)}
+                    onBlur={(e) => {
+                        const raw = e.target.value;
+                        const next: FrontmatterValue = typeof v === "number" ? Number(raw) : raw;
+                        if (next !== v) updateKey(k, next);
+                    }}
+                    className="w-full px-2 py-0.5 text-sm bg-transparent border-b border-transparent hover:border-[var(--border)] focus:border-[var(--accent)] outline-none text-[var(--text-primary)]"
+                />
+            );
         }
         return <span className="text-sm">{String(v)}</span>;
     };
 
     return (
-        <div className="mb-6 border border-[var(--border)] rounded-lg overflow-hidden bg-[var(--bg-secondary)]">
+        <div className="mb-6 border border-[var(--border)] rounded-[var(--radius-md)] overflow-hidden bg-[var(--bg-secondary)]">
             <button
                 type="button"
                 onClick={() => setCollapsed((c) => !c)}
@@ -247,7 +310,7 @@ function FrontmatterCard({ data }: { data: Record<string, string | number | bool
             >
                 <span className="flex items-center gap-2">
                     <span className="material-symbols-outlined text-[16px]">tune</span>
-                    Frontmatter
+                    Properties
                 </span>
                 <span className="material-symbols-outlined text-[18px]">
                     {collapsed ? "expand_more" : "expand_less"}
@@ -255,11 +318,11 @@ function FrontmatterCard({ data }: { data: Record<string, string | number | bool
             </button>
             {!collapsed && (
                 <div className="px-4 py-3 border-t border-[var(--border-subtle)]">
-                    <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
+                    <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm items-center">
                         {entries.map(([k, v]) => (
                             <div key={k} className="contents">
-                                <dt className="font-mono text-xs text-[var(--text-muted)] pt-0.5">{k}</dt>
-                                <dd className="text-[var(--text-primary)]">{renderValue(v)}</dd>
+                                <dt className="font-mono text-xs text-[var(--text-muted)]">{k}</dt>
+                                <dd className="text-[var(--text-primary)]">{renderValue(k, v)}</dd>
                             </div>
                         ))}
                     </dl>
@@ -336,6 +399,7 @@ export function MarkdownPreview({
     onContentChange,
     onScrollFraction,
     registerScroller,
+    onWikilinkClick,
 }: MarkdownPreviewProps) {
     const mainRef = useRef<HTMLElement>(null);
     const [zoomImage, setZoomImage] = useState<{ src: string; alt: string } | null>(null);
@@ -391,6 +455,27 @@ export function MarkdownPreview({
         img: ({ src, alt, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) => (
             <LocalImage src={src || ''} alt={alt || 'image'} baseDir={baseDir} {...props} />
         ),
+        a: ({ href, children, ...rest }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
+            // Wikilink: open same-folder file via callback
+            if (href && href.startsWith("wikilink:")) {
+                const target = decodeURIComponent(href.slice("wikilink:".length));
+                return (
+                    <a
+                        {...rest}
+                        href="#"
+                        onClick={(e) => {
+                            e.preventDefault();
+                            onWikilinkClick?.(target);
+                        }}
+                        className="text-[var(--syntax-link)] border-b border-dashed border-[var(--syntax-link)] hover:opacity-80"
+                        title={`Wikilink: ${target}`}
+                    >
+                        {children}
+                    </a>
+                );
+            }
+            return <a href={href} {...rest}>{children}</a>;
+        },
         pre: (props: React.HTMLAttributes<HTMLPreElement>) => <CodeBlock {...props} />,
         h1: (props: React.HTMLAttributes<HTMLHeadingElement>) => <HeadingWithAnchor level={1} {...props} />,
         h2: (props: React.HTMLAttributes<HTMLHeadingElement>) => <HeadingWithAnchor level={2} {...props} />,
@@ -408,7 +493,7 @@ export function MarkdownPreview({
                 />
             );
         },
-    }), [baseDir, handleTaskToggle]);
+    }), [baseDir, handleTaskToggle, onWikilinkClick]);
 
     // Reset the task index counter on every render so the next render starts at 0.
     // (react-markdown renders synchronously top-to-bottom, so order matches doc order)
@@ -418,10 +503,22 @@ export function MarkdownPreview({
     // Parse YAML frontmatter once per content change. We render it as a
     // metadata card and pass the *body* (without the --- block) to react-markdown
     // so the raw YAML doesn't appear as a thematic break + heading.
-    const { body: renderBody, data: frontmatter, hasFrontmatter } = useMemo(
+    const { body: parsedBody, data: frontmatter, hasFrontmatter } = useMemo(
         () => parseFrontmatter(content),
         [content]
     );
+
+    // Pre-process wikilinks: [[Foo]] and [[Foo|alias]] → [alias](wikilink:Foo).
+    // We use a custom href scheme so the link click handler can detect them
+    // and load the target file, while keeping the source markdown portable
+    // (the source still has [[Foo]] — only the rendered output uses the scheme).
+    const renderBody = useMemo(() => {
+        return parsedBody.replace(/\[\[([^\]|]+?)(?:\|([^\]]+))?\]\]/g, (_m, target: string, alias?: string) => {
+            const t = target.trim();
+            const a = (alias ?? target).trim();
+            return `[${a}](wikilink:${encodeURIComponent(t)})`;
+        });
+    }, [parsedBody]);
 
     // Lazy-load KaTeX only when the document actually contains math.
     // Heavy (~280kb) — keeping it out of the initial bundle is a real win.
@@ -495,7 +592,16 @@ export function MarkdownPreview({
                 className="flex-1 overflow-y-auto bg-[var(--bg-primary)] transition-colors"
             >
                 <div className="max-w-[800px] mx-auto px-8 py-12">
-                    {hasFrontmatter && <FrontmatterCard data={frontmatter} />}
+                    {hasFrontmatter && (
+                        <FrontmatterCard
+                            data={frontmatter}
+                            editable={!!onContentChange}
+                            onChange={(next) => {
+                                if (!onContentChange) return;
+                                onContentChange(serializeFrontmatter(next, parsedBody));
+                            }}
+                        />
+                    )}
                     <div className="markdown-body" ref={markdownBodyRef}>
                         <Markdown
                             // eslint-disable-next-line @typescript-eslint/no-explicit-any

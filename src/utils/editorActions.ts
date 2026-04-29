@@ -33,9 +33,110 @@ const lineEndIndex = (text: string, pos: number): number => {
     return idx === -1 ? text.length : idx;
 };
 
+/* ---------- Table cell navigation ---------- */
+
+const isTableLine = (line: string): boolean => {
+    const t = line.trim();
+    return t.startsWith("|") && t.endsWith("|") && t.length > 1;
+};
+
+/**
+ * Tab inside a markdown table moves to the next cell (skipping the separator
+ * `| --- |` row). At the last cell of a row, jumps to row 1 of next row.
+ * At the last cell of the last row, creates a new row.
+ */
+export function handleTableTab(state: EditorState, shift: boolean): EditorResult | null {
+    const { text, selStart, selEnd } = state;
+    if (selStart !== selEnd) return null;
+
+    const ls = lineStartIndex(text, selStart);
+    const le = lineEndIndex(text, selStart);
+    const line = text.slice(ls, le);
+    if (!isTableLine(line)) return null;
+
+    // Find pipe positions on the current line
+    const pipes: number[] = [];
+    for (let i = 0; i < line.length; i++) if (line[i] === "|") pipes.push(i);
+    if (pipes.length < 2) return null;
+
+    const localPos = selStart - ls;
+    let cellIdx = 0;
+    for (let i = 0; i < pipes.length - 1; i++) {
+        if (localPos >= pipes[i] && localPos <= pipes[i + 1]) {
+            cellIdx = i;
+            break;
+        }
+    }
+
+    if (!shift) {
+        if (cellIdx < pipes.length - 2) {
+            // Next cell, place caret at content start
+            const target = ls + pipes[cellIdx + 1] + 2;
+            return { text, selStart: target, selEnd: target };
+        }
+        // Last cell — go to next row's first cell, skipping separator rows
+        let nextLs = le + 1;
+        while (nextLs < text.length) {
+            const nle = lineEndIndex(text, nextLs);
+            const nextLine = text.slice(nextLs, nle);
+            if (!isTableLine(nextLine)) {
+                // Not a table — create a new row matching the column count
+                const cols = pipes.length - 1;
+                const blank = "| " + Array(cols).fill("").join(" | ") + " |";
+                const inserted = "\n" + blank;
+                const target = le + 3; // after first "| "
+                return {
+                    text: text.slice(0, le) + inserted + text.slice(le),
+                    selStart: target,
+                    selEnd: target,
+                };
+            }
+            // Skip separator rows
+            if (/^\|\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|$/.test(nextLine.trim())) {
+                nextLs = nle + 1;
+                continue;
+            }
+            // Found a body row — go to its first cell
+            const firstPipe = nextLs + nextLine.indexOf("|");
+            const target = firstPipe + 2;
+            return { text, selStart: target, selEnd: target };
+        }
+        return null;
+    }
+
+    // Shift+Tab — previous cell
+    if (cellIdx > 0) {
+        const target = ls + pipes[cellIdx - 1] + 2;
+        return { text, selStart: target, selEnd: target };
+    }
+    // First cell — try previous row
+    if (ls > 0) {
+        let prevLe = ls - 1;
+        while (prevLe > 0) {
+            const prevLs = lineStartIndex(text, prevLe - 1);
+            const prevLine = text.slice(prevLs, prevLe);
+            if (!isTableLine(prevLine)) break;
+            if (/^\|\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|$/.test(prevLine.trim())) {
+                prevLe = prevLs - 1;
+                continue;
+            }
+            // Last cell of prev row
+            const prevPipes: number[] = [];
+            for (let i = 0; i < prevLine.length; i++) if (prevLine[i] === "|") prevPipes.push(i);
+            const target = prevLs + prevPipes[prevPipes.length - 2] + 2;
+            return { text, selStart: target, selEnd: target };
+        }
+    }
+    return null;
+}
+
 /* ---------- Tab / Shift+Tab ---------- */
 
 export function handleTab(state: EditorState, shift: boolean): EditorResult | null {
+    // Try table-tab first; falls through to indent if not in a table.
+    const tableResult = handleTableTab(state, shift);
+    if (tableResult) return tableResult;
+
     const { text, selStart, selEnd } = state;
 
     // Multi-line: indent or outdent each line in the selection

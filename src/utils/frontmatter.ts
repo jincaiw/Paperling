@@ -9,11 +9,13 @@
  * Anything more exotic is preserved as a raw string so we don't lose data.
  */
 
+export type FrontmatterValue = string | number | boolean | string[];
+
 export interface FrontmatterResult {
     /** Body markdown with the frontmatter block stripped. */
     body: string;
     /** Parsed key-value map. Empty object if no frontmatter present. */
-    data: Record<string, string | number | boolean | string[]>;
+    data: Record<string, FrontmatterValue>;
     /** True if the source started with a valid `---\n...\n---\n` block. */
     hasFrontmatter: boolean;
 }
@@ -106,4 +108,28 @@ export function parseFrontmatter(source: string): FrontmatterResult {
     }
 
     return { body, data, hasFrontmatter: true };
+}
+
+const formatScalar = (v: string | number | boolean): string => {
+    if (typeof v === "boolean") return v ? "true" : "false";
+    if (typeof v === "number") return String(v);
+    // Quote strings only if they contain colon, special chars, or look like a number/bool
+    if (/^(true|false|\d+(\.\d+)?)$/.test(v) || /[:#&*!|>'"]/.test(v) || v.includes("\n")) {
+        return `"${v.replace(/"/g, '\\"')}"`;
+    }
+    return v;
+};
+
+const formatValue = (v: FrontmatterValue): string => {
+    if (Array.isArray(v)) {
+        return `[${v.map((s) => formatScalar(s)).join(", ")}]`;
+    }
+    return formatScalar(v);
+};
+
+/** Serialize a parsed frontmatter map back into a `---` block + the body. */
+export function serializeFrontmatter(data: Record<string, FrontmatterValue>, body: string): string {
+    const lines = Object.entries(data).map(([k, v]) => `${k}: ${formatValue(v)}`);
+    if (lines.length === 0) return body;
+    return `---\n${lines.join("\n")}\n---\n${body.startsWith("\n") ? "" : "\n"}${body}`;
 }

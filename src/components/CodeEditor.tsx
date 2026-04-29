@@ -13,6 +13,7 @@ import {
 import { FindReplaceBar } from "./FindReplaceBar";
 import { FormatToolbar } from "./FormatToolbar";
 import { SlashMenu, type SlashCommand } from "./SlashMenu";
+import { AIBubble } from "./AIBubble";
 import { pasteUrlOnSelection, pasteUrlAutolink, pasteTsvAsTable, htmlToMarkdown } from "../utils/smartPaste";
 import type { Scroller } from "../utils/scrollSync";
 
@@ -56,7 +57,7 @@ const sharedTextStyle: React.CSSProperties = {
     boxSizing: "border-box",
 };
 
-export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, onError, filePath, onScrollFraction, registerScroller, focusMode, typewriterMode, showToolbar }: CodeEditorProps) {
+export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, onError, filePath, onScrollFraction, registerScroller, focusMode, typewriterMode, showToolbar, aiConfig }: CodeEditorProps) {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const gutterRef = useRef<HTMLDivElement>(null);
     const highlightRef = useRef<HTMLDivElement>(null);
@@ -69,6 +70,7 @@ export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, on
     // (text typed after the slash). Caret movement / blur closes the menu.
     const [slashState, setSlashState] = useState<{ startIdx: number; pos: { x: number; y: number } } | null>(null);
     const [slashQuery, setSlashQuery] = useState("");
+    const [aiBubble, setAIBubble] = useState<{ x: number; y: number; selStart: number; selEnd: number; text: string } | null>(null);
 
     const lines = useMemo(() => content.split("\n"), [content]);
     const lineCount = lines.length;
@@ -113,6 +115,19 @@ export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, on
                 setSelStartForFind(state.selStart);
                 setFindMode("replace");
                 setFindOpen(true);
+                return;
+            }
+            // Ctrl+J — open AI bubble on selection or current line
+            if (e.key === "j" || e.key === "J") {
+                e.preventDefault();
+                const t = textareaRef.current;
+                if (!t) return;
+                const lineIdx = t.value.slice(0, state.selStart).split("\n").length - 1;
+                const rect = t.getBoundingClientRect();
+                const y = rect.top + EDITOR_PADDING + lineIdx * EDITOR_LINE_HEIGHT - t.scrollTop + EDITOR_LINE_HEIGHT + 4;
+                const x = rect.left + EDITOR_PADDING + 12;
+                const text = state.text.slice(state.selStart, state.selEnd);
+                setAIBubble({ x, y, selStart: state.selStart, selEnd: state.selEnd, text });
                 return;
             }
         }
@@ -777,6 +792,32 @@ export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, on
                     onSelect={handleSlashSelect}
                     onClose={() => { setSlashState(null); setSlashQuery(""); }}
                 />
+
+                {aiConfig && aiBubble && (
+                    <AIBubble
+                        anchor={{ x: aiBubble.x, y: aiBubble.y }}
+                        selectedText={aiBubble.text}
+                        config={aiConfig}
+                        onReplace={(out) => {
+                            applyResult({
+                                text: content.slice(0, aiBubble.selStart) + out + content.slice(aiBubble.selEnd),
+                                selStart: aiBubble.selStart + out.length,
+                                selEnd: aiBubble.selStart + out.length,
+                            });
+                            setAIBubble(null);
+                        }}
+                        onInsert={(out) => {
+                            const insertAt = aiBubble.selEnd;
+                            applyResult({
+                                text: content.slice(0, insertAt) + "\n\n" + out + content.slice(insertAt),
+                                selStart: insertAt + 2 + out.length,
+                                selEnd: insertAt + 2 + out.length,
+                            });
+                            setAIBubble(null);
+                        }}
+                        onClose={() => setAIBubble(null)}
+                    />
+                )}
 
                 {/* Actual Editable Textarea — transparent text, real caret. */}
                 <textarea

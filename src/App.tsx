@@ -19,9 +19,11 @@ import { SplitDivider } from "./components/SplitDivider";
 import { createScrollSync } from "./utils/scrollSync";
 import { ShortcutCheatsheet } from "./components/ShortcutCheatsheet";
 import { CommandPalette, type PaletteCommand } from "./components/CommandPalette";
+import { SettingsModal } from "./components/SettingsModal";
 import { getRecentFiles } from "./utils/persistence";
 import {
   addRecentFile,
+  getAIConfig,
   getAutoSave,
   getFocusMode,
   getLastFile,
@@ -64,8 +66,10 @@ function AppContent() {
   const [mode, setMode] = useState<ViewMode>(() => getSavedViewMode());
   const [showCheatsheet, setShowCheatsheet] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [splitRatio, setSplitRatioState] = useState<number>(() => getSplitRatio());
   const [autoSaveEnabled, setAutoSaveEnabled] = useState<boolean>(() => getAutoSave());
+  const [aiConfig, setAiConfigState] = useState(() => getAIConfig());
   const [focusModeEnabled, setFocusModeEnabled] = useState<boolean>(() => getFocusMode());
   const [typewriterModeEnabled, setTypewriterModeEnabled] = useState<boolean>(() => getTypewriterMode());
   const [toolbarVisible, setToolbarVisible] = useState<boolean>(() => getToolbarEnabled());
@@ -179,7 +183,15 @@ function AppContent() {
       ["marklite:toolbar-toggle", (e) => setToolbarVisible(!!(e as CustomEvent).detail?.enabled)],
     ];
     handlers.forEach(([k, h]) => window.addEventListener(k, h));
-    return () => handlers.forEach(([k, h]) => window.removeEventListener(k, h));
+
+    // Re-read AI config when settings modal closes — cheap, single localStorage read
+    const onStorage = () => setAiConfigState(getAIConfig());
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      handlers.forEach(([k, h]) => window.removeEventListener(k, h));
+      window.removeEventListener("storage", onStorage);
+    };
   }, []);
 
   // Listen for SettingsMenu toggling auto-save (cross-component event keeps both sides in sync)
@@ -393,6 +405,28 @@ function AppContent() {
       unlisten?.();
     };
   }, [loadFile]);
+
+  // Wikilink click: resolve target relative to the current file's folder.
+  // Tries `<target>.md` first, then `<target>` literal. Silently fails if neither exists.
+  const handleWikilinkClick = useCallback(async (target: string) => {
+    if (!filePath) return;
+    const lastSep = Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"));
+    const dir = lastSep > 0 ? filePath.slice(0, lastSep) : "";
+    const sep = filePath.includes("\\") ? "\\" : "/";
+    const candidates = [
+      `${dir}${sep}${target}.md`,
+      `${dir}${sep}${target}.markdown`,
+      `${dir}${sep}${target}`,
+    ];
+    for (const c of candidates) {
+      try {
+        await stat(c);
+        loadFile(c);
+        return;
+      } catch {/* try next */}
+    }
+    showToast(`Could not resolve [[${target}]]`, "error");
+  }, [filePath, loadFile, showToast]);
 
   const handleNewFile = useCallback(() => {
     if (content !== originalContent) {
@@ -612,6 +646,11 @@ function AppContent() {
         e.preventDefault();
         setShowPalette(true);
       }
+      // Ctrl+, — Settings
+      if ((e.ctrlKey || e.metaKey) && e.key === ",") {
+        e.preventDefault();
+        setShowSettings(true);
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -736,6 +775,15 @@ function AppContent() {
       section: "Toggles",
       icon: "save_as",
       run: () => setAutoSaveEnabled((v) => !v),
+    });
+
+    items.push({
+      id: "settings.open",
+      label: "Open Settings…",
+      hint: "Ctrl+,",
+      section: "Toggles",
+      icon: "settings",
+      run: () => setShowSettings(true),
     });
 
     // === Help ===
@@ -864,6 +912,7 @@ function AppContent() {
                 focusMode={focusModeEnabled}
                 typewriterMode={typewriterModeEnabled}
                 showToolbar={toolbarVisible}
+                aiConfig={aiConfig}
               />
             </div>
 
@@ -893,6 +942,7 @@ function AppContent() {
                 onContentChange={handleContentChange}
                 onScrollFraction={onPreviewScrollFraction}
                 registerScroller={registerPreviewScroller}
+                onWikilinkClick={handleWikilinkClick}
               />
             </div>
           </div>
@@ -910,6 +960,7 @@ function AppContent() {
             isOpen={showTOC}
             content={content}
             onClose={closeAllPanels}
+            activeLine={mode === "preview" ? previewLine : cursorPosition.line}
           />
 
 <StatusBar
@@ -949,6 +1000,13 @@ function AppContent() {
 
       <ShortcutCheatsheet isOpen={showCheatsheet} onClose={() => setShowCheatsheet(false)} />
       <CommandPalette isOpen={showPalette} items={paletteItems} onClose={() => setShowPalette(false)} />
+      <SettingsModal
+        isOpen={showSettings}
+        onClose={() => {
+          setShowSettings(false);
+          setAiConfigState(getAIConfig()); // pick up endpoint/key edits immediately
+        }}
+      />
 
       {/* Toast notifications */}
       <Toast

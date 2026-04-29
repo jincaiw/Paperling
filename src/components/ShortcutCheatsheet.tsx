@@ -37,6 +37,8 @@ const groups: ShortcutGroup[] = [
             { keys: `${cmd}+Shift+E`, description: "Toggle file explorer" },
             { keys: `${cmd}+Shift+O`, description: "Toggle outline" },
             { keys: `${cmd}+P`, description: "Command palette" },
+            { keys: `${cmd}+,`, description: "Open settings" },
+            { keys: `${cmd}+J`, description: "AI assist on selection" },
             { keys: "?", description: "Show this cheatsheet" },
         ],
     },
