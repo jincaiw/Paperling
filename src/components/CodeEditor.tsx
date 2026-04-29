@@ -1,5 +1,15 @@
 import { useRef, useCallback, useEffect, useMemo, useState } from "react";
 import { getImageFromClipboard, saveImageToFile, createMarkdownImage, insertAtCursor } from "../utils/imageUtils";
+import {
+    handleTab,
+    handleEnter,
+    handleAutoPair,
+    handleSkipCloser,
+    handleBackspace,
+    wrapSelection,
+    insertLink,
+    type EditorResult,
+} from "../utils/editorActions";
 
 interface CodeEditorProps {
     content: string;
@@ -47,6 +57,112 @@ export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, on
     const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         onChange(e.target.value);
     };
+
+    // Apply an EditorResult: update content + restore selection on next frame.
+    // (selection must be set after React flushes the new value to the DOM)
+    const applyResult = useCallback((r: EditorResult) => {
+        onChange(r.text);
+        requestAnimationFrame(() => {
+            const t = textareaRef.current;
+            if (!t) return;
+            t.selectionStart = r.selStart;
+            t.selectionEnd = r.selEnd;
+        });
+    }, [onChange]);
+
+    const getState = useCallback(() => {
+        const t = textareaRef.current;
+        if (!t) return null;
+        return { text: t.value, selStart: t.selectionStart, selEnd: t.selectionEnd };
+    }, []);
+
+    const onKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        const state = getState();
+        if (!state) return;
+
+        // Ctrl/Cmd shortcuts (Bold, Italic, Link). Other Ctrl combos handled at app level.
+        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+            if (e.key === "b" || e.key === "B") {
+                e.preventDefault();
+                applyResult(wrapSelection(state, "**", "**", "bold"));
+                return;
+            }
+            if (e.key === "i" || e.key === "I") {
+                e.preventDefault();
+                applyResult(wrapSelection(state, "*", "*", "italic"));
+                return;
+            }
+            if (e.key === "k" || e.key === "K") {
+                e.preventDefault();
+                applyResult(insertLink(state));
+                return;
+            }
+            // Ctrl+/ — toggle blockquote on the current line
+            if (e.key === "/") {
+                e.preventDefault();
+                const ls = state.text.lastIndexOf("\n", state.selStart - 1) + 1;
+                const lineEnd = state.text.indexOf("\n", state.selStart);
+                const end = lineEnd === -1 ? state.text.length : lineEnd;
+                const line = state.text.slice(ls, end);
+                const quoted = line.startsWith("> ");
+                const newLine = quoted ? line.slice(2) : "> " + line;
+                const delta = newLine.length - line.length;
+                applyResult({
+                    text: state.text.slice(0, ls) + newLine + state.text.slice(end),
+                    selStart: state.selStart + delta,
+                    selEnd: state.selEnd + delta,
+                });
+                return;
+            }
+        }
+
+        if (e.key === "Tab") {
+            const r = handleTab(state, e.shiftKey);
+            if (r) {
+                e.preventDefault();
+                applyResult(r);
+            }
+            return;
+        }
+
+        if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            const r = handleEnter(state);
+            if (r) {
+                e.preventDefault();
+                applyResult(r);
+            }
+            return;
+        }
+
+        if (e.key === "Backspace" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            const r = handleBackspace(state);
+            if (r) {
+                e.preventDefault();
+                applyResult(r);
+            }
+            return;
+        }
+
+        // Auto-pair / skip-closer: only for printable single-char keys
+        if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            const skip = handleSkipCloser(state, e.key);
+            if (skip) {
+                e.preventDefault();
+                const t = textareaRef.current;
+                if (t) {
+                    t.selectionStart = skip.selStart;
+                    t.selectionEnd = skip.selEnd;
+                }
+                return;
+            }
+            const pair = handleAutoPair(state, e.key);
+            if (pair) {
+                e.preventDefault();
+                applyResult(pair);
+                return;
+            }
+        }
+    }, [applyResult, getState]);
 
     // Handle paste events - check for images in clipboard
     const handlePaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -381,6 +497,7 @@ export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, on
                     value={content}
                     onChange={handleChange}
                     onPaste={handlePaste}
+                    onKeyDown={onKeyDown}
                     spellCheck={false}
                     autoComplete="off"
                     autoCorrect="off"
