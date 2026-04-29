@@ -5,6 +5,31 @@ import rehypeHighlight from "rehype-highlight";
 import { readFile } from "@tauri-apps/plugin-fs";
 import { parseFrontmatter } from "../utils/frontmatter";
 import type { Scroller } from "../utils/scrollSync";
+import { MermaidBlock, isMermaidLanguage } from "./MermaidBlock";
+
+// Detect KaTeX-style math so we only load the heavy katex bundle when needed.
+// $$...$$ for block math, $...$ for inline math (not preceded/followed by digit
+// to avoid false positives like "$5 and $10").
+const MATH_DETECTION_REGEX = /(\$\$[\s\S]+?\$\$)|((?:^|[^\d$])\$[^\s$][^\n$]*?[^\s$]\$(?!\d))/m;
+const hasMath = (s: string): boolean => MATH_DETECTION_REGEX.test(s);
+
+type PluginPair = { remark: unknown; rehype: unknown };
+let mathPluginsCache: PluginPair | null = null;
+let mathLoadPromise: Promise<PluginPair> | null = null;
+
+const loadMathPlugins = (): Promise<PluginPair> => {
+    if (mathPluginsCache) return Promise.resolve(mathPluginsCache);
+    if (mathLoadPromise) return mathLoadPromise;
+    mathLoadPromise = Promise.all([
+        import("remark-math"),
+        import("rehype-katex"),
+        import("katex/dist/katex.min.css"),
+    ]).then(([rm, rk]) => {
+        mathPluginsCache = { remark: rm.default, rehype: rk.default };
+        return mathPluginsCache;
+    });
+    return mathLoadPromise;
+};
 
 interface MarkdownPreviewProps {
     content: string;
@@ -135,10 +160,32 @@ function LocalImage({ src, alt, baseDir, ...props }: { src: string; alt: string;
     );
 }
 
-/** Code block with a copy-to-clipboard button. */
+/** Pull className + raw text out of a react-markdown <pre><code>...</code></pre> child. */
+function extractCodeChild(children: React.ReactNode): { className?: string; text: string } | null {
+    // <pre>'s child is the <code> element React node
+    if (!children || typeof children !== "object") return null;
+    const arr = Array.isArray(children) ? children : [children];
+    for (const child of arr) {
+        if (child && typeof child === "object" && "props" in child) {
+            const props = (child as { props: { className?: string; children?: React.ReactNode } }).props;
+            return {
+                className: props.className,
+                text: nodeText(props.children),
+            };
+        }
+    }
+    return null;
+}
+
+/** Code block with a copy-to-clipboard button — also intercepts mermaid blocks. */
 function CodeBlock({ children, ...rest }: React.HTMLAttributes<HTMLPreElement>) {
     const ref = useRef<HTMLPreElement>(null);
     const [copied, setCopied] = useState(false);
+
+    const codeInfo = extractCodeChild(children);
+    if (codeInfo && isMermaidLanguage(codeInfo.className)) {
+        return <MermaidBlock code={codeInfo.text} />;
+    }
 
     const handleCopy = async () => {
         const text = ref.current?.innerText ?? "";
@@ -376,6 +423,28 @@ export function MarkdownPreview({
         [content]
     );
 
+    // Lazy-load KaTeX only when the document actually contains math.
+    // Heavy (~280kb) — keeping it out of the initial bundle is a real win.
+    const [mathPlugins, setMathPlugins] = useState<PluginPair | null>(mathPluginsCache);
+    useEffect(() => {
+        if (mathPlugins) return;
+        if (!hasMath(renderBody)) return;
+        let cancelled = false;
+        loadMathPlugins().then((p) => {
+            if (!cancelled) setMathPlugins(p);
+        });
+        return () => { cancelled = true; };
+    }, [renderBody, mathPlugins]);
+
+    const remarkPlugins = useMemo(
+        () => (mathPlugins ? [remarkGfm, mathPlugins.remark] : [remarkGfm]),
+        [mathPlugins]
+    );
+    const rehypePlugins = useMemo(
+        () => (mathPlugins ? [rehypeHighlight, mathPlugins.rehype] : [rehypeHighlight]),
+        [mathPlugins]
+    );
+
     // Track scroll: update active-line indicator + report fraction for split-sync.
     const handleScroll = useCallback(() => {
         const element = mainRef.current;
@@ -429,8 +498,10 @@ export function MarkdownPreview({
                     {hasFrontmatter && <FrontmatterCard data={frontmatter} />}
                     <div className="markdown-body" ref={markdownBodyRef}>
                         <Markdown
-                            remarkPlugins={[remarkGfm]}
-                            rehypePlugins={[rehypeHighlight]}
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            remarkPlugins={remarkPlugins as any}
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            rehypePlugins={rehypePlugins as any}
                             components={components}
                         >
                             {renderBody}
