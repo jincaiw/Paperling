@@ -10,6 +10,7 @@ interface StatusBarProps {
     wordCount?: number;
     charCount?: number;
     readingTimeMin?: number;
+    autoSaveStatus?: "idle" | "saving" | "saved" | "error";
 }
 
 const formatReadingTime = (min: number): string => {
@@ -32,7 +33,15 @@ export function StatusBar({
     wordCount,
     charCount,
     readingTimeMin,
+    autoSaveStatus = "idle",
 }: StatusBarProps) {
+    const autoSaveLabel: Record<string, { text: string; icon: string; color: string }> = {
+        idle: { text: "", icon: "", color: "" },
+        saving: { text: "Saving…", icon: "sync", color: "var(--text-secondary)" },
+        saved: { text: "Auto-saved", icon: "check", color: "var(--status-saved)" },
+        error: { text: "Save failed", icon: "error", color: "var(--danger)" },
+    };
+    const autoChip = autoSaveLabel[autoSaveStatus];
     return (
         <footer
             role="status"
@@ -72,6 +81,14 @@ export function StatusBar({
                 </button>
             </div>
             <div className="flex items-center gap-4">
+                {autoChip.text && (
+                    <div className="flex items-center gap-1 transition-opacity" style={{ color: autoChip.color }}>
+                        <span className={`material-symbols-outlined text-[13px] ${autoSaveStatus === "saving" ? "animate-spin" : ""}`}>
+                            {autoChip.icon}
+                        </span>
+                        <span>{autoChip.text}</span>
+                    </div>
+                )}
                 <div className="flex items-center gap-1.5" aria-label={isSaved ? "File saved" : "File has unsaved changes"}>
                     <span
                         className={`w-2 h-2 rounded-full transition-all ${isSaved

@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import { stat } from "@tauri-apps/plugin-fs";
 import { getRecentFiles, removeRecentFile, type RecentFile } from "../utils/persistence";
 
 interface WelcomeScreenProps {
     onOpenFile: () => void;
+    onNewFile?: () => void;
     onFileDrop: (path: string) => void;
     onOpenRecent?: (path: string) => void;
 }
@@ -23,11 +25,29 @@ const parentFolderOf = (path: string): string => {
     return segs.slice(-2).join("/") || segs.join("/");
 };
 
-export function WelcomeScreen({ onOpenFile, onFileDrop, onOpenRecent }: WelcomeScreenProps) {
+export function WelcomeScreen({ onOpenFile, onNewFile, onFileDrop, onOpenRecent }: WelcomeScreenProps) {
     const [recents, setRecents] = useState<RecentFile[]>([]);
+    const [missing, setMissing] = useState<Set<string>>(new Set());
 
     useEffect(() => {
-        setRecents(getRecentFiles());
+        const list = getRecentFiles();
+        setRecents(list);
+        // Quick existence check for each — gray out missing entries
+        let cancelled = false;
+        Promise.all(
+            list.map(async (f) => {
+                try {
+                    await stat(f.path);
+                    return null;
+                } catch {
+                    return f.path;
+                }
+            })
+        ).then((results) => {
+            if (cancelled) return;
+            setMissing(new Set(results.filter((p): p is string => !!p)));
+        });
+        return () => { cancelled = true; };
     }, []);
 
     const handleDragOver = (e: React.DragEvent) => {
@@ -75,16 +95,27 @@ export function WelcomeScreen({ onOpenFile, onFileDrop, onOpenRecent }: WelcomeS
                     </p>
                 </div>
 
-                <button
-                    onClick={onOpenFile}
-                    className="btn-press flex items-center gap-2 bg-[var(--accent)] hover:opacity-90 text-[var(--accent-text)] font-medium text-sm px-6 py-2.5 rounded-lg transition-all duration-200"
-                >
-                    <span className="material-symbols-outlined text-[20px]">folder_open</span>
-                    <span>Open File</span>
-                </button>
+                <div className="flex gap-2">
+                    <button
+                        onClick={onOpenFile}
+                        className="btn-press flex items-center gap-2 bg-[var(--accent)] hover:opacity-90 text-[var(--accent-text)] font-medium text-sm px-5 py-2.5 rounded-[var(--radius-md)] transition-all duration-200"
+                    >
+                        <span className="material-symbols-outlined text-[20px]">folder_open</span>
+                        <span>Open File</span>
+                    </button>
+                    {onNewFile && (
+                        <button
+                            onClick={onNewFile}
+                            className="btn-press flex items-center gap-2 bg-[var(--bg-secondary)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border)] font-medium text-sm px-5 py-2.5 rounded-[var(--radius-md)] transition-all duration-200"
+                        >
+                            <span className="material-symbols-outlined text-[20px]">edit_note</span>
+                            <span>New File</span>
+                        </button>
+                    )}
+                </div>
 
                 <p className="text-xs text-[var(--text-muted)]">
-                    or drag and drop a <code className="bg-[var(--bg-secondary)] px-1.5 py-0.5 rounded text-[var(--text-secondary)] border border-[var(--border)]">.md</code> file
+                    drag a <code className="bg-[var(--bg-secondary)] px-1.5 py-0.5 rounded text-[var(--text-secondary)] border border-[var(--border)]">.md</code> file · press <kbd className="px-1 py-0.5 font-mono rounded border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-secondary)]">Ctrl+P</kbd> for commands · <kbd className="px-1 py-0.5 font-mono rounded border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-secondary)]">?</kbd> for shortcuts
                 </p>
 
                 {recents.length > 0 && onOpenRecent && (
@@ -93,19 +124,24 @@ export function WelcomeScreen({ onOpenFile, onFileDrop, onOpenRecent }: WelcomeS
                             Recent
                         </div>
                         <ul className="flex flex-col">
-                            {recents.map((f) => (
+                            {recents.map((f) => {
+                                const isMissing = missing.has(f.path);
+                                return (
                                 <li key={f.path} className="group">
                                     <button
-                                        onClick={() => onOpenRecent(f.path)}
-                                        className="btn-press w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--bg-hover)] transition-colors text-left"
-                                        title={f.path}
+                                        onClick={() => !isMissing && onOpenRecent(f.path)}
+                                        disabled={isMissing}
+                                        className={`btn-press w-full flex items-center gap-3 px-3 py-2 rounded-[var(--radius-md)] transition-colors text-left ${isMissing ? "opacity-50 cursor-not-allowed" : "hover:bg-[var(--bg-hover)]"}`}
+                                        title={isMissing ? `${f.path} (missing)` : f.path}
                                     >
-                                        <span className="material-symbols-outlined text-[18px] text-[var(--text-secondary)] shrink-0">description</span>
+                                        <span className="material-symbols-outlined text-[18px] text-[var(--text-secondary)] shrink-0">
+                                            {isMissing ? "broken_image" : "description"}
+                                        </span>
                                         <div className="flex-1 min-w-0">
-                                            <div className="text-sm text-[var(--text-primary)] truncate">{f.name}</div>
+                                            <div className={`text-sm truncate ${isMissing ? "line-through text-[var(--text-muted)]" : "text-[var(--text-primary)]"}`}>{f.name}</div>
                                             <div className="text-[11px] text-[var(--text-muted)] truncate">{parentFolderOf(f.path)}</div>
                                         </div>
-                                        <span className="text-[11px] text-[var(--text-muted)] tabular-nums shrink-0">{formatRelative(f.openedAt)}</span>
+                                        <span className="text-[11px] text-[var(--text-muted)] tabular-nums shrink-0">{isMissing ? "missing" : formatRelative(f.openedAt)}</span>
                                         <span
                                             role="button"
                                             tabIndex={0}
@@ -118,7 +154,8 @@ export function WelcomeScreen({ onOpenFile, onFileDrop, onOpenRecent }: WelcomeS
                                         </span>
                                     </button>
                                 </li>
-                            ))}
+                                );
+                            })}
                         </ul>
                     </div>
                 )}

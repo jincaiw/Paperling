@@ -9,11 +9,14 @@ interface TitleBarProps {
     isDirty?: boolean;
     filePath?: string;
     onOpenFile?: () => void;
+    onNewFile?: () => void;
     onSaveFile?: () => Promise<void>;
     getExportHtml?: () => string;
+    onExportSuccess?: (format: string) => void;
+    onExportError?: (format: string) => void;
 }
 
-export function TitleBar({ fileName, isDirty, filePath, onOpenFile, onSaveFile, getExportHtml }: TitleBarProps) {
+export function TitleBar({ fileName, isDirty, filePath, onOpenFile, onNewFile, onSaveFile, getExportHtml, onExportSuccess, onExportError }: TitleBarProps) {
     const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
 
     const handleMinimize = async () => {
@@ -107,14 +110,25 @@ export function TitleBar({ fileName, isDirty, filePath, onOpenFile, onSaveFile, 
                         )}
                     </div>
 
-                    {/* Open File Button - shown when a file is already open */}
+                    {/* Open File / New Button - shown when a file is already open */}
                     {hasFile && onOpenFile && (
                         <>
                             <div className="w-[1px] h-4 bg-[var(--border)] ml-2"></div>
+                            {onNewFile && (
+                                <button
+                                    onClick={onNewFile}
+                                    aria-label="New file"
+                                    className="flex items-center gap-1 px-2 py-1 rounded-[var(--radius-md)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors text-xs"
+                                    title="New File (Ctrl+N)"
+                                >
+                                    <span className="material-symbols-outlined text-[16px]">edit_note</span>
+                                    <span>New</span>
+                                </button>
+                            )}
                             <button
                                 onClick={onOpenFile}
                                 aria-label="Open file"
-                                className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors text-xs"
+                                className="flex items-center gap-1 px-2 py-1 rounded-[var(--radius-md)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors text-xs"
                                 title="Open File (Ctrl+O)"
                             >
                                 <span className="material-symbols-outlined text-[16px]">folder_open</span>
@@ -123,6 +137,8 @@ export function TitleBar({ fileName, isDirty, filePath, onOpenFile, onSaveFile, 
                             <ExportMenu
                                 fileName={fileName || 'document.md'}
                                 getExportHtml={getExportHtml}
+                                onSuccess={onExportSuccess}
+                                onError={onExportError}
                             />
                         </>
                     )}

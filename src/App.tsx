@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { listen, TauriEvent } from "@tauri-apps/api/event";
+import { stat } from "@tauri-apps/plugin-fs";
 
 import { ThemeProvider } from "./context/ThemeContext";
 import { TitleBar } from "./components/TitleBar";
@@ -68,6 +69,8 @@ function AppContent() {
   const [focusModeEnabled, setFocusModeEnabled] = useState<boolean>(() => getFocusMode());
   const [typewriterModeEnabled, setTypewriterModeEnabled] = useState<boolean>(() => getTypewriterMode());
   const [toolbarVisible, setToolbarVisible] = useState<boolean>(() => getToolbarEnabled());
+  const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [externalChange, setExternalChange] = useState<{ kind: "modified" | "deleted"; lastMtime: number } | null>(null);
   const [cursorPosition, setCursorPosition] = useState({ line: 1, col: 1 });
   const [isLoading, setIsLoading] = useState(false);
 
@@ -189,6 +192,77 @@ function AppContent() {
     return () => window.removeEventListener("marklite:autosave-toggle", handler);
   }, []);
 
+  // External-change detection: poll file mtime every 4s. If the file was modified
+  // by something outside MarkLite, we either silently reload (clean buffer) or
+  // banner the user with a choice (dirty buffer). If it was deleted, banner only.
+  const lastMtimeRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!filePath) {
+      lastMtimeRef.current = null;
+      setExternalChange(null);
+      return;
+    }
+    let cancelled = false;
+    let didInit = false;
+
+    const tick = async () => {
+      if (cancelled || !filePath) return;
+      try {
+        const s = await stat(filePath);
+        const mtime = s.mtime ? new Date(s.mtime).getTime() : 0;
+        if (!didInit) {
+          lastMtimeRef.current = mtime;
+          didInit = true;
+          return;
+        }
+        if (mtime !== lastMtimeRef.current) {
+          // Changed externally
+          if (content === originalContent) {
+            // Silently reload — buffer was clean
+            try {
+              const fileData = await invoke<FileData>("read_file", { path: filePath });
+              setContent(fileData.content);
+              setOriginalContent(fileData.content);
+              setFileSize(fileData.size);
+              lastMtimeRef.current = mtime;
+            } catch {
+              setExternalChange({ kind: "deleted", lastMtime: mtime });
+            }
+          } else {
+            setExternalChange({ kind: "modified", lastMtime: mtime });
+          }
+        }
+      } catch {
+        // File no longer exists
+        if (!externalChange) setExternalChange({ kind: "deleted", lastMtime: lastMtimeRef.current ?? 0 });
+      }
+    };
+
+    tick();
+    const id = window.setInterval(tick, 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [filePath, content, originalContent, externalChange]);
+
+  const dismissExternalChange = useCallback(() => setExternalChange(null), []);
+  const reloadFromDisk = useCallback(async () => {
+    if (!filePath) return;
+    try {
+      const fileData = await invoke<FileData>("read_file", { path: filePath });
+      setContent(fileData.content);
+      setOriginalContent(fileData.content);
+      setFileSize(fileData.size);
+      const s = await stat(filePath);
+      lastMtimeRef.current = s.mtime ? new Date(s.mtime).getTime() : 0;
+      setExternalChange(null);
+    } catch (err) {
+      console.error("Reload failed:", err);
+      showToast("Failed to reload file", "error");
+    }
+  }, [filePath, showToast]);
+
   // Auto-save: debounced 1.5s after typing stops, only if a file is open and dirty
   useEffect(() => {
     if (!autoSaveEnabled) return;
@@ -196,9 +270,17 @@ function AppContent() {
     if (content === originalContent) return;
 
     const timer = window.setTimeout(() => {
+      setAutoSaveStatus("saving");
       invoke("save_file", { path: filePath, content })
-        .then(() => setOriginalContent(content))
-        .catch((err) => console.error("Auto-save failed:", err));
+        .then(() => {
+          setOriginalContent(content);
+          setAutoSaveStatus("saved");
+          window.setTimeout(() => setAutoSaveStatus((s) => (s === "saved" ? "idle" : s)), 1500);
+        })
+        .catch((err) => {
+          console.error("Auto-save failed:", err);
+          setAutoSaveStatus("error");
+        });
     }, 1500);
 
     return () => window.clearTimeout(timer);
@@ -236,7 +318,19 @@ function AppContent() {
     }
   }, [content, originalContent, loadFileDirect]);
 
-  // Handlers for unsaved-before-open dialog
+  // New file: clears buffer. Used by handleNewFile and the dialog handlers.
+  const startBlankFile = useCallback(() => {
+    setFilePath(null);
+    setFileName("Untitled.md");
+    setContent("");
+    setOriginalContent("");
+    setFileSize(0);
+    setLastFile(null);
+    setMode("code");
+  }, []);
+
+  // Handlers for unsaved-before-open dialog. Supports a "__NEW__" sentinel
+  // so the New File action routes through the same confirmation flow.
   const handleSaveAndOpen = useCallback(async () => {
     setShowUnsavedBeforeOpen(false);
     if (filePath) {
@@ -249,19 +343,23 @@ function AppContent() {
         return;
       }
     }
-    if (pendingFilePath) {
+    if (pendingFilePath === "__NEW__") {
+      startBlankFile();
+    } else if (pendingFilePath) {
       await loadFileDirect(pendingFilePath);
-      setPendingFilePath(null);
     }
-  }, [filePath, content, pendingFilePath, loadFileDirect, showToast]);
+    setPendingFilePath(null);
+  }, [filePath, content, pendingFilePath, loadFileDirect, showToast, startBlankFile]);
 
   const handleDiscardAndOpen = useCallback(async () => {
     setShowUnsavedBeforeOpen(false);
-    if (pendingFilePath) {
+    if (pendingFilePath === "__NEW__") {
+      startBlankFile();
+    } else if (pendingFilePath) {
       await loadFileDirect(pendingFilePath);
-      setPendingFilePath(null);
     }
-  }, [pendingFilePath, loadFileDirect]);
+    setPendingFilePath(null);
+  }, [pendingFilePath, loadFileDirect, startBlankFile]);
 
   const handleCancelOpen = useCallback(() => {
     setShowUnsavedBeforeOpen(false);
@@ -296,6 +394,15 @@ function AppContent() {
     };
   }, [loadFile]);
 
+  const handleNewFile = useCallback(() => {
+    if (content !== originalContent) {
+      setPendingFilePath("__NEW__");
+      setShowUnsavedBeforeOpen(true);
+    } else {
+      startBlankFile();
+    }
+  }, [content, originalContent, startBlankFile]);
+
   // Open file dialog
   const handleOpenFile = useCallback(async () => {
     try {
@@ -317,43 +424,43 @@ function AppContent() {
     }
   }, [loadFile]);
 
-  // Save file
+  // Save As — always prompts for a new path, even if a path is already set.
+  const handleSaveAs = useCallback(async () => {
+    const selected = await save({
+      filters: [{ name: "Markdown", extensions: ["md"] }],
+      defaultPath: fileName ?? undefined,
+    });
+    if (!selected) return;
+    try {
+      await invoke("save_file", { path: selected, content });
+      setFilePath(selected);
+      const name = selected.replace(/\\/g, "/").split("/").pop() || "Untitled";
+      setFileName(name);
+      setOriginalContent(content);
+      addRecentFile(selected, name);
+      setLastFile(selected);
+      showToast("File saved", "success");
+    } catch (err) {
+      console.error("Failed to save file:", err);
+      showToast("Failed to save file", "error");
+    }
+  }, [content, fileName, showToast]);
+
+  // Save file (Save As if no path yet)
   const handleSaveFile = useCallback(async () => {
     if (!filePath) {
-      // Save as new file
-      const selected = await save({
-        filters: [
-          {
-            name: "Markdown",
-            extensions: ["md"],
-          },
-        ],
-      });
-
-      if (selected) {
-        try {
-          await invoke("save_file", { path: selected, content });
-          setFilePath(selected);
-          const name = selected.replace(/\\/g, '/').split('/').pop() || 'Untitled';
-          setFileName(name);
-          setOriginalContent(content);
-          showToast("File saved", "success");
-        } catch (err) {
-          console.error("Failed to save file:", err);
-          showToast("Failed to save file", "error");
-        }
-      }
-    } else {
-      try {
-        await invoke("save_file", { path: filePath, content });
-        setOriginalContent(content);
-        showToast("File saved", "success");
-      } catch (err) {
-        console.error("Failed to save file:", err);
-        showToast("Failed to save file", "error");
-      }
+      await handleSaveAs();
+      return;
     }
-  }, [filePath, content, showToast]);
+    try {
+      await invoke("save_file", { path: filePath, content });
+      setOriginalContent(content);
+      showToast("File saved", "success");
+    } catch (err) {
+      console.error("Failed to save file:", err);
+      showToast("Failed to save file", "error");
+    }
+  }, [filePath, content, showToast, handleSaveAs]);
 
   // Listen for file open from CLI (when app is opened with a file by double-click)
   useEffect(() => {
@@ -465,6 +572,18 @@ function AppContent() {
           handleSaveFile();
         }
       }
+      // Ctrl+Shift+S - Save As
+      if (e.ctrlKey && e.shiftKey && (e.key === "s" || e.key === "S")) {
+        e.preventDefault();
+        if (hasFile || content) {
+          handleSaveAs();
+        }
+      }
+      // Ctrl+N - New file
+      if (e.ctrlKey && !e.shiftKey && e.key === "n") {
+        e.preventDefault();
+        handleNewFile();
+      }
       // Ctrl+E - Toggle preview/code mode (without Shift)
       if (e.ctrlKey && !e.shiftKey && e.key === "e") {
         e.preventDefault();
@@ -497,7 +616,7 @@ function AppContent() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleOpenFile, handleSaveFile, handleToggleMode, handleToggleSplit, handleToggleFileExplorer, handleToggleTOC, hasFile, content]);
+  }, [handleOpenFile, handleSaveFile, handleSaveAs, handleNewFile, handleToggleMode, handleToggleSplit, handleToggleFileExplorer, handleToggleTOC, hasFile, content]);
 
   // Get export HTML from the visible preview on demand (avoids duplicate rendering)
   const getExportHtml = useCallback((): string => {
@@ -514,6 +633,14 @@ function AppContent() {
 
     // === File ===
     items.push({
+      id: "file.new",
+      label: "New file",
+      hint: "Ctrl+N",
+      section: "File",
+      icon: "edit_note",
+      run: handleNewFile,
+    });
+    items.push({
       id: "file.open",
       label: "Open file…",
       hint: "Ctrl+O",
@@ -528,6 +655,14 @@ function AppContent() {
       section: "File",
       icon: "save",
       run: handleSaveFile,
+    });
+    items.push({
+      id: "file.saveas",
+      label: "Save As…",
+      hint: "Ctrl+Shift+S",
+      section: "File",
+      icon: "save_as",
+      run: handleSaveAs,
     });
 
     // === View ===
@@ -659,7 +794,8 @@ function AppContent() {
 
     return items;
   }, [
-    handleOpenFile, handleSaveFile, handleToggleSplit, handleToggleFileExplorer, handleToggleTOC,
+    handleNewFile, handleOpenFile, handleSaveFile, handleSaveAs,
+    handleToggleSplit, handleToggleFileExplorer, handleToggleTOC,
     loadFile, filePath, content,
     focusModeEnabled, typewriterModeEnabled, toolbarVisible, autoSaveEnabled,
   ]);
@@ -671,12 +807,34 @@ function AppContent() {
         isDirty={isDirty}
         filePath={filePath ?? undefined}
         onOpenFile={handleOpenFile}
+        onNewFile={handleNewFile}
         onSaveFile={handleSaveFile}
         getExportHtml={getExportHtml}
+        onExportSuccess={(fmt) => showToast(`Exported as ${fmt}`, "success")}
+        onExportError={(fmt) => showToast(`Failed to export ${fmt}`, "error")}
       />
 
+      {externalChange && hasFile && (
+        <div role="alert" className="px-4 py-2 bg-[var(--status-unsaved)]/15 border-b border-[var(--status-unsaved)]/30 flex items-center gap-3 text-sm text-[var(--text-primary)] animate-fade-in-down">
+          <span className="material-symbols-outlined text-[18px] text-[var(--status-unsaved)]">warning</span>
+          <span className="flex-1">
+            {externalChange.kind === "modified"
+              ? "This file was modified outside MarkLite."
+              : "This file was deleted or moved."}
+          </span>
+          {externalChange.kind === "modified" && (
+            <button onClick={reloadFromDisk} className="px-3 py-1 text-xs rounded-[var(--radius-sm)] bg-[var(--accent)] text-[var(--accent-text)] hover:opacity-90">
+              Reload from disk
+            </button>
+          )}
+          <button onClick={dismissExternalChange} className="px-3 py-1 text-xs rounded-[var(--radius-sm)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]">
+            Keep mine
+          </button>
+        </div>
+      )}
+
       {!hasFile ? (
-        <WelcomeScreen onOpenFile={handleOpenFile} onFileDrop={handleFileDrop} onOpenRecent={loadFile} />
+        <WelcomeScreen onOpenFile={handleOpenFile} onNewFile={handleNewFile} onFileDrop={handleFileDrop} onOpenRecent={loadFile} />
       ) : (
         <>
           {/* Split-aware layout. Both views always mounted; CSS toggles their display
@@ -766,6 +924,7 @@ function AppContent() {
             wordCount={wordCount}
             charCount={charCount}
             readingTimeMin={readingTimeMin}
+            autoSaveStatus={autoSaveStatus}
           />
         </>
       )}
