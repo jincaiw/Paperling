@@ -12,6 +12,7 @@ import {
 } from "../utils/editorActions";
 import { FindReplaceBar } from "./FindReplaceBar";
 import { FormatToolbar } from "./FormatToolbar";
+import { SlashMenu, type SlashCommand } from "./SlashMenu";
 import { pasteUrlOnSelection, pasteUrlAutolink, pasteTsvAsTable, htmlToMarkdown } from "../utils/smartPaste";
 import type { Scroller } from "../utils/scrollSync";
 
@@ -27,7 +28,6 @@ interface CodeEditorProps {
     focusMode?: boolean;
     typewriterMode?: boolean;
     showToolbar?: boolean;
-    onSlashTrigger?: (textareaEl: HTMLTextAreaElement, caretCoords: { x: number; y: number }) => void;
     aiConfig?: { endpoint: string; model: string; apiKey: string };
 }
 
@@ -56,7 +56,7 @@ const sharedTextStyle: React.CSSProperties = {
     boxSizing: "border-box",
 };
 
-export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, onError, filePath, onScrollFraction, registerScroller, focusMode, typewriterMode, showToolbar, onSlashTrigger }: CodeEditorProps) {
+export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, onError, filePath, onScrollFraction, registerScroller, focusMode, typewriterMode, showToolbar }: CodeEditorProps) {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const gutterRef = useRef<HTMLDivElement>(null);
     const highlightRef = useRef<HTMLDivElement>(null);
@@ -64,6 +64,11 @@ export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, on
     const [findOpen, setFindOpen] = useState(false);
     const [findMode, setFindMode] = useState<"find" | "replace">("find");
     const [selStartForFind, setSelStartForFind] = useState(0);
+
+    // Slash menu state — tracked as the index of the "/" trigger and the live query
+    // (text typed after the slash). Caret movement / blur closes the menu.
+    const [slashState, setSlashState] = useState<{ startIdx: number; pos: { x: number; y: number } } | null>(null);
+    const [slashQuery, setSlashQuery] = useState("");
 
     const lines = useMemo(() => content.split("\n"), [content]);
     const lineCount = lines.length;
@@ -426,33 +431,76 @@ export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, on
         return () => cancelAnimationFrame(raf);
     }, [activeLine, typewriterMode]);
 
-    // Slash-command trigger: when user types "/" at start of line (or after whitespace),
-    // notify parent so it can open the slash menu near the caret.
+    // Slash-command lifecycle. When user types "/" at line start, open the menu
+    // anchored below the caret line. As they keep typing, update the query.
+    // Caret moving outside [startIdx, caretPos] or pressing Escape closes it.
     useEffect(() => {
         const t = textareaRef.current;
-        if (!t || !onSlashTrigger) return;
-        const handler = (e: KeyboardEvent) => {
-            if (e.key !== "/") return;
-            // Only trigger when we're about to type "/" at the start of a line
-            // or after whitespace. Defer to rAF so the textarea has the new value.
-            requestAnimationFrame(() => {
-                const pos = t.selectionStart;
-                const before = t.value.slice(0, pos);
-                const lastNl = before.lastIndexOf("\n");
-                const lineHead = before.slice(lastNl + 1);
-                if (lineHead === "/") {
-                    // Caret coords: roughly cursor line × line-height + padding offset
-                    const lineIdx = before.split("\n").length - 1;
-                    const rect = t.getBoundingClientRect();
-                    const x = rect.left + EDITOR_PADDING;
-                    const y = rect.top + EDITOR_PADDING + (lineIdx * EDITOR_LINE_HEIGHT) - t.scrollTop + EDITOR_LINE_HEIGHT;
-                    onSlashTrigger(t, { x, y });
-                }
-            });
+        if (!t) return;
+
+        const recomputePos = (lineIdx: number) => {
+            const rect = t.getBoundingClientRect();
+            return {
+                x: rect.left + EDITOR_PADDING,
+                y: rect.top + EDITOR_PADDING + lineIdx * EDITOR_LINE_HEIGHT - t.scrollTop + EDITOR_LINE_HEIGHT + 4,
+            };
         };
-        t.addEventListener("keydown", handler);
-        return () => t.removeEventListener("keydown", handler);
-    }, [onSlashTrigger]);
+
+        const onKeyUp = () => {
+            const pos = t.selectionStart;
+            const value = t.value;
+
+            if (slashState) {
+                // Close if caret moved left of start, or to a different line
+                if (pos < slashState.startIdx + 1) {
+                    setSlashState(null);
+                    setSlashQuery("");
+                    return;
+                }
+                const between = value.slice(slashState.startIdx + 1, pos);
+                if (between.includes("\n") || between.includes(" ")) {
+                    setSlashState(null);
+                    setSlashQuery("");
+                    return;
+                }
+                setSlashQuery(between);
+                return;
+            }
+
+            // Maybe open: caret right after a "/" that's at line start or post-whitespace
+            if (pos > 0 && value[pos - 1] === "/") {
+                const before = value.slice(0, pos - 1);
+                const lastNl = before.lastIndexOf("\n");
+                const lineHead = value.slice(lastNl + 1, pos - 1);
+                // Only at start of line, or after a single space (e.g. nested in lists)
+                if (lineHead === "" || /^\s*$/.test(lineHead) || /[\s]$/.test(lineHead)) {
+                    const lineIdx = before.split("\n").length - 1;
+                    setSlashState({ startIdx: pos - 1, pos: recomputePos(lineIdx) });
+                    setSlashQuery("");
+                }
+            }
+        };
+
+        t.addEventListener("keyup", onKeyUp);
+        t.addEventListener("click", onKeyUp);
+        return () => {
+            t.removeEventListener("keyup", onKeyUp);
+            t.removeEventListener("click", onKeyUp);
+        };
+    }, [slashState]);
+
+    const handleSlashSelect = useCallback((cmd: SlashCommand) => {
+        if (!slashState) return;
+        const t = textareaRef.current;
+        if (!t) return;
+        const pos = t.selectionStart;
+        // Replace the "/query" range with the snippet
+        const newText = t.value.slice(0, slashState.startIdx) + cmd.snippet + t.value.slice(pos);
+        const caretAt = slashState.startIdx + (cmd.caretOffset ?? cmd.snippet.length);
+        applyResult({ text: newText, selStart: caretAt, selEnd: caretAt });
+        setSlashState(null);
+        setSlashQuery("");
+    }, [slashState, applyResult]);
 
     // Syntax highlighting for markdown
     function highlightLine(line: string): React.ReactNode {
@@ -720,6 +768,14 @@ export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, on
                     }}
                     onJumpTo={handleFindJump}
                     onReplace={handleFindReplace}
+                />
+
+                <SlashMenu
+                    isOpen={!!slashState}
+                    position={slashState?.pos ?? null}
+                    query={slashQuery}
+                    onSelect={handleSlashSelect}
+                    onClose={() => { setSlashState(null); setSlashQuery(""); }}
                 />
 
                 {/* Actual Editable Textarea — transparent text, real caret. */}
