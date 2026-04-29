@@ -15,6 +15,7 @@ import { TableOfContents } from "./components/TableOfContents";
 import { Toast, ToastType } from "./components/Toast";
 import { UnsavedChangesDialog } from "./components/UnsavedChangesDialog";
 import { SplitDivider } from "./components/SplitDivider";
+import { createScrollSync } from "./utils/scrollSync";
 import {
   addRecentFile,
   getAutoSave,
@@ -73,6 +74,32 @@ function AppContent() {
   // Export HTML content ref - captures from visible preview
   const previewRef = useRef<HTMLDivElement>(null);
   const splitContainerRef = useRef<HTMLDivElement>(null);
+
+  // Bidirectional scroll sync between editor and preview (split mode only).
+  // Singleton instance — one sync controller for the lifetime of the app.
+  const scrollSyncRef = useRef(createScrollSync());
+
+  // Enable/disable based on view mode
+  useEffect(() => {
+    scrollSyncRef.current.setEnabled(mode === "split");
+  }, [mode]);
+
+  const registerCodeScroller = useCallback(
+    (s: import("./utils/scrollSync").Scroller | null) => scrollSyncRef.current.register("code", s),
+    []
+  );
+  const registerPreviewScroller = useCallback(
+    (s: import("./utils/scrollSync").Scroller | null) => scrollSyncRef.current.register("preview", s),
+    []
+  );
+  const onCodeScrollFraction = useCallback(
+    (f: number) => scrollSyncRef.current.notify("code", f),
+    []
+  );
+  const onPreviewScrollFraction = useCallback(
+    (f: number) => scrollSyncRef.current.notify("preview", f),
+    []
+  );
 
   // Derived state
   const isDirty = content !== originalContent;
@@ -474,6 +501,8 @@ function AppContent() {
                 onImagePaste={handleImagePaste}
                 onError={handleError}
                 filePath={filePath}
+                onScrollFraction={onCodeScrollFraction}
+                registerScroller={registerCodeScroller}
               />
             </div>
 
@@ -501,6 +530,8 @@ function AppContent() {
                 filePath={filePath}
                 markdownBodyRef={previewRef}
                 onContentChange={handleContentChange}
+                onScrollFraction={onPreviewScrollFraction}
+                registerScroller={registerPreviewScroller}
               />
             </div>
           </div>

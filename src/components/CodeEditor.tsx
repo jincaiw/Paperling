@@ -11,6 +11,7 @@ import {
     type EditorResult,
 } from "../utils/editorActions";
 import { FindReplaceBar } from "./FindReplaceBar";
+import type { Scroller } from "../utils/scrollSync";
 
 interface CodeEditorProps {
     content: string;
@@ -19,6 +20,8 @@ interface CodeEditorProps {
     onImagePaste?: () => void; // Callback when image is successfully pasted
     onError?: (message: string) => void; // Callback for error messages
     filePath?: string | null; // Current file path for saving images
+    onScrollFraction?: (fraction: number) => void;
+    registerScroller?: (scroller: Scroller | null) => void;
 }
 
 // Locked metrics for perfect alignment between textarea and highlight layer.
@@ -46,7 +49,7 @@ const sharedTextStyle: React.CSSProperties = {
     boxSizing: "border-box",
 };
 
-export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, onError, filePath }: CodeEditorProps) {
+export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, onError, filePath, onScrollFraction, registerScroller }: CodeEditorProps) {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const gutterRef = useRef<HTMLDivElement>(null);
     const highlightRef = useRef<HTMLDivElement>(null);
@@ -295,6 +298,10 @@ export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, on
                 if (gutterRef.current) {
                     gutterRef.current.scrollTop = top;
                 }
+                if (top !== lastTop && onScrollFraction) {
+                    const max = t.scrollHeight - t.clientHeight;
+                    onScrollFraction(max > 0 ? top / max : 0);
+                }
                 lastTop = top;
                 lastLeft = left;
             }
@@ -306,7 +313,22 @@ export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, on
         return () => {
             if (rafId !== null) cancelAnimationFrame(rafId);
         };
-    }, []);
+    }, [onScrollFraction]);
+
+    // Register an imperative scroller so external code (split-view sync) can
+    // drive our scroll position by fraction without touching internals.
+    useEffect(() => {
+        if (!registerScroller) return;
+        registerScroller({
+            setFraction: (f: number) => {
+                const t = textareaRef.current;
+                if (!t) return;
+                const max = t.scrollHeight - t.clientHeight;
+                if (max > 0) t.scrollTop = max * f;
+            },
+        });
+        return () => registerScroller(null);
+    }, [registerScroller]);
 
     // Memoize highlighted lines to avoid recalculating on non-content re-renders
     const highlightedLines = useMemo(() => lines.map((line) => highlightLine(line)), [lines]);

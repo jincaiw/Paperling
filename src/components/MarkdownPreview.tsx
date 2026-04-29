@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { readFile } from "@tauri-apps/plugin-fs";
 import { parseFrontmatter } from "../utils/frontmatter";
+import type { Scroller } from "../utils/scrollSync";
 
 interface MarkdownPreviewProps {
     content: string;
@@ -15,6 +16,8 @@ interface MarkdownPreviewProps {
     filePath?: string | null;
     markdownBodyRef?: React.RefObject<HTMLDivElement | null>;
     onContentChange?: (newContent: string) => void;
+    onScrollFraction?: (fraction: number) => void;
+    registerScroller?: (scroller: Scroller | null) => void;
 }
 
 /** Slugify heading text into a stable, URL-safe id (GitHub-style). */
@@ -284,6 +287,8 @@ export function MarkdownPreview({
     filePath,
     markdownBodyRef,
     onContentChange,
+    onScrollFraction,
+    registerScroller,
 }: MarkdownPreviewProps) {
     const mainRef = useRef<HTMLElement>(null);
     const [zoomImage, setZoomImage] = useState<{ src: string; alt: string } | null>(null);
@@ -371,25 +376,21 @@ export function MarkdownPreview({
         [content]
     );
 
-    // Calculate current line based on scroll position
+    // Track scroll: update active-line indicator + report fraction for split-sync.
     const handleScroll = useCallback(() => {
-        if (!mainRef.current || !onLineChange) return;
-
         const element = mainRef.current;
+        if (!element) return;
+
         const scrollTop = element.scrollTop;
         const scrollHeight = element.scrollHeight - element.clientHeight;
+        const fraction = scrollHeight > 0 ? scrollTop / scrollHeight : 0;
 
-        if (scrollHeight <= 0) {
-            onLineChange(1);
-            return;
+        if (onLineChange) {
+            const currentLine = scrollHeight <= 0 ? 1 : Math.max(1, Math.ceil(fraction * lineCount));
+            onLineChange(currentLine);
         }
-
-        // Calculate approximate line based on scroll percentage
-        const scrollPercentage = scrollTop / scrollHeight;
-        const currentLine = Math.max(1, Math.ceil(scrollPercentage * lineCount));
-
-        onLineChange(currentLine);
-    }, [lineCount, onLineChange]);
+        onScrollFraction?.(fraction);
+    }, [lineCount, onLineChange, onScrollFraction]);
 
     // Set up scroll listener
     useEffect(() => {
@@ -397,13 +398,26 @@ export function MarkdownPreview({
         if (!element) return;
 
         element.addEventListener("scroll", handleScroll);
-        // Initial line
         handleScroll();
 
         return () => {
             element.removeEventListener("scroll", handleScroll);
         };
     }, [handleScroll]);
+
+    // Register imperative scroller for split-view sync
+    useEffect(() => {
+        if (!registerScroller) return;
+        registerScroller({
+            setFraction: (f: number) => {
+                const el = mainRef.current;
+                if (!el) return;
+                const max = el.scrollHeight - el.clientHeight;
+                if (max > 0) el.scrollTop = max * f;
+            },
+        });
+        return () => registerScroller(null);
+    }, [registerScroller]);
 
     return (
         <>
