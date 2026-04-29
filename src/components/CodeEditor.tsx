@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect, useMemo } from "react";
+import { useRef, useCallback, useEffect, useMemo, useState } from "react";
 import { getImageFromClipboard, saveImageToFile, createMarkdownImage, insertAtCursor } from "../utils/imageUtils";
 
 interface CodeEditorProps {
@@ -10,51 +10,69 @@ interface CodeEditorProps {
     filePath?: string | null; // Current file path for saving images
 }
 
+// Locked metrics for perfect alignment between textarea and highlight layer.
+// Both layers MUST use these exact values to keep the caret on top of the rendered text.
+const EDITOR_FONT_FAMILY =
+    "'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace";
+const EDITOR_FONT_SIZE = 14; // px
+const EDITOR_LINE_HEIGHT = 24; // px
+const EDITOR_PADDING = 16; // px
+const EDITOR_TAB_SIZE = 4;
+
+const sharedTextStyle: React.CSSProperties = {
+    fontFamily: EDITOR_FONT_FAMILY,
+    fontSize: `${EDITOR_FONT_SIZE}px`,
+    lineHeight: `${EDITOR_LINE_HEIGHT}px`,
+    padding: `${EDITOR_PADDING}px`,
+    tabSize: EDITOR_TAB_SIZE,
+    MozTabSize: EDITOR_TAB_SIZE,
+    fontVariantLigatures: "none",
+    fontKerning: "none",
+    letterSpacing: "0px",
+    whiteSpace: "pre",
+    wordBreak: "normal",
+    overflowWrap: "normal",
+    boxSizing: "border-box",
+};
+
 export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, onError, filePath }: CodeEditorProps) {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const gutterRef = useRef<HTMLDivElement>(null);
     const highlightRef = useRef<HTMLDivElement>(null);
+    const [activeLine, setActiveLine] = useState(1);
 
-    // Calculate line numbers
-    const lines = content.split("\n");
+    const lines = useMemo(() => content.split("\n"), [content]);
     const lineCount = lines.length;
 
-const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         onChange(e.target.value);
     };
 
     // Handle paste events - check for images in clipboard
     const handlePaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
         const imageFile = getImageFromClipboard(e.nativeEvent);
-        
+
         if (imageFile) {
-            // Prevent default paste behavior for images
             e.preventDefault();
-            
-            // Check if file is saved (required for image storage)
+
             if (!filePath) {
                 onError?.('Please save your file first before pasting images.');
                 return;
             }
-            
+
             try {
-                // Save image to local file and get relative path
                 const imagePath = await saveImageToFile(imageFile, filePath);
                 const timestamp = Date.now();
                 const altText = `image-${timestamp}`;
                 const markdownImage = createMarkdownImage(imagePath, altText);
-                
-                // Get current cursor position
+
                 const textarea = textareaRef.current;
                 if (!textarea) return;
-                
+
                 const cursorPos = textarea.selectionStart;
-                
-                // Insert markdown image at cursor
                 const { newText, newCursorPosition } = insertAtCursor(content, cursorPos, markdownImage);
                 onChange(newText);
-                
-                // Restore cursor position after state update
+
                 requestAnimationFrame(() => {
                     if (textareaRef.current) {
                         textareaRef.current.selectionStart = newCursorPosition;
@@ -62,20 +80,18 @@ const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
                         textareaRef.current.focus();
                     }
                 });
-                
-                // Notify parent of successful paste
+
                 onImagePaste?.();
             } catch (error) {
                 console.error('Failed to paste image:', error);
                 onError?.('Failed to save image. Please try again.');
             }
         }
-        // If no image, let default paste behavior handle text
     }, [content, onChange, onImagePaste, filePath]);
 
-    // Calculate cursor position (line and column)
+    // Calculate cursor position (line and column) and active line for highlight
     const updateCursorPosition = useCallback(() => {
-        if (!textareaRef.current || !onCursorChange) return;
+        if (!textareaRef.current) return;
 
         const textarea = textareaRef.current;
         const cursorPos = textarea.selectionStart;
@@ -84,67 +100,93 @@ const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         const line = linesBeforeCursor.length;
         const column = linesBeforeCursor[linesBeforeCursor.length - 1].length + 1;
 
-        onCursorChange(line, column);
+        setActiveLine(line);
+        onCursorChange?.(line, column);
     }, [onCursorChange]);
 
-    // Track cursor position on various events
+    // Track cursor on every relevant event (selectionchange catches all caret moves)
     useEffect(() => {
         const textarea = textareaRef.current;
         if (!textarea) return;
 
-        const handleSelectionChange = () => updateCursorPosition();
+        const handler = () => {
+            // selectionchange fires on document; only react if our textarea is focused
+            if (document.activeElement === textarea) {
+                updateCursorPosition();
+            }
+        };
 
-        textarea.addEventListener("keyup", handleSelectionChange);
-        textarea.addEventListener("click", handleSelectionChange);
-        textarea.addEventListener("select", handleSelectionChange);
+        document.addEventListener("selectionchange", handler);
+        textarea.addEventListener("keyup", updateCursorPosition);
+        textarea.addEventListener("click", updateCursorPosition);
+        textarea.addEventListener("focus", updateCursorPosition);
 
-        // Initial position
         updateCursorPosition();
 
         return () => {
-            textarea.removeEventListener("keyup", handleSelectionChange);
-            textarea.removeEventListener("click", handleSelectionChange);
-            textarea.removeEventListener("select", handleSelectionChange);
+            document.removeEventListener("selectionchange", handler);
+            textarea.removeEventListener("keyup", updateCursorPosition);
+            textarea.removeEventListener("click", updateCursorPosition);
+            textarea.removeEventListener("focus", updateCursorPosition);
         };
-    }, [updateCursorPosition, content]);
+    }, [updateCursorPosition]);
 
-    // Sync scroll between textarea, gutter, and highlight layer
-    const handleScroll = useCallback(() => {
-        if (!textareaRef.current) return;
-        const scrollTop = textareaRef.current.scrollTop;
-        const scrollLeft = textareaRef.current.scrollLeft;
+    // Use rAF-based scroll sync for sub-frame accuracy. The native scroll event
+    // can lag the caret by 1 frame; rAF lets us catch up before paint.
+    useEffect(() => {
+        const textarea = textareaRef.current;
+        if (!textarea) return;
 
-        if (gutterRef.current) {
-            gutterRef.current.scrollTop = scrollTop;
-        }
-        if (highlightRef.current) {
-            highlightRef.current.scrollTop = scrollTop;
-            highlightRef.current.scrollLeft = scrollLeft;
-        }
+        let rafId: number | null = null;
+        let lastTop = -1;
+        let lastLeft = -1;
+
+        const sync = () => {
+            const t = textareaRef.current;
+            if (!t) {
+                rafId = null;
+                return;
+            }
+            const top = t.scrollTop;
+            const left = t.scrollLeft;
+            if (top !== lastTop || left !== lastLeft) {
+                if (highlightRef.current) {
+                    highlightRef.current.scrollTop = top;
+                    highlightRef.current.scrollLeft = left;
+                }
+                if (gutterRef.current) {
+                    gutterRef.current.scrollTop = top;
+                }
+                lastTop = top;
+                lastLeft = left;
+            }
+            rafId = requestAnimationFrame(sync);
+        };
+
+        rafId = requestAnimationFrame(sync);
+
+        return () => {
+            if (rafId !== null) cancelAnimationFrame(rafId);
+        };
     }, []);
 
     // Memoize highlighted lines to avoid recalculating on non-content re-renders
-    const highlightedLines = useMemo(() => lines.map((line) => highlightLine(line)), [content]);
+    const highlightedLines = useMemo(() => lines.map((line) => highlightLine(line)), [lines]);
 
     // Syntax highlighting for markdown
     function highlightLine(line: string): React.ReactNode {
-        // H1 headers
         if (line.startsWith("# ")) {
             return <span className="text-[var(--syntax-h1)] font-bold">{line}</span>;
         }
-        // H2 headers
         if (line.startsWith("## ")) {
             return <span className="text-[var(--syntax-h2)] font-bold">{line}</span>;
         }
-        // H3+ headers
         if (line.startsWith("### ") || line.startsWith("#### ")) {
             return <span className="text-[var(--syntax-h3)] font-semibold">{line}</span>;
         }
-        // Code fence
         if (line.startsWith("```")) {
             return <span className="text-[var(--syntax-code)]">{line}</span>;
         }
-        // List items
         if (line.match(/^[\s]*[-*+]\s/)) {
             const marker = line.match(/^[\s]*[-*+]/)?.[0] || "";
             const rest = line.slice(marker.length);
@@ -155,7 +197,6 @@ const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
                 </>
             );
         }
-        // Numbered lists
         if (line.match(/^[\s]*\d+\.\s/)) {
             const match = line.match(/^([\s]*\d+\.)/);
             const marker = match?.[0] || "";
@@ -167,27 +208,25 @@ const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
                 </>
             );
         }
-// Blockquote
         if (line.startsWith(">")) {
             return <span className="text-[var(--syntax-quote)] italic">{line}</span>;
         }
-        // Images ![alt](url) - check before links since images have ! prefix
         if (line.includes("![") && line.includes("](")) {
             return highlightImages(line);
         }
-        // Links [text](url)
         if (line.includes("[") && line.includes("](")) {
             return highlightLinks(line);
         }
-        // Bold **text**
         if (line.includes("**")) {
             return highlightBold(line);
         }
-        // Regular text
-        return <span>{line || "\u00A0"}</span>;
+        // Empty lines must render something with zero width but real height.
+        // Using "" lets the parent line-height (24px) own vertical metrics —
+        // identical to how a textarea renders an empty line. NBSP would shift
+        // baseline metrics on some fonts and desync the caret.
+        return <span>{line}</span>;
     }
 
-    // Highlight images ![alt](url) - shows truncated for data URLs
     function highlightImages(text: string): React.ReactNode {
         const parts: React.ReactNode[] = [];
         const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
@@ -199,16 +238,15 @@ const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
             if (match.index > lastIndex) {
                 parts.push(<span key={key++}>{text.slice(lastIndex, match.index)}</span>);
             }
-            
+
             const altText = match[1];
             const url = match[2];
-            // Truncate long data URLs for display
-            const displayUrl = url.startsWith('data:') 
-                ? `data:image/...` 
-                : url.length > 40 
-                    ? url.slice(0, 37) + '...' 
+            const displayUrl = url.startsWith('data:')
+                ? `data:image/...`
+                : url.length > 40
+                    ? url.slice(0, 37) + '...'
                     : url;
-            
+
             parts.push(
                 <span key={key++} className="text-[var(--syntax-link)]">
                     <span className="text-[var(--syntax-bold)]">!</span>
@@ -284,48 +322,73 @@ const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
             {/* Line Numbers Gutter */}
             <div
                 ref={gutterRef}
-                className="w-14 shrink-0 bg-[var(--bg-gutter)] border-r border-[var(--border-subtle)] py-4 pr-3 no-select text-xs font-mono text-[var(--text-muted)] overflow-hidden transition-colors"
+                className="w-14 shrink-0 bg-[var(--bg-gutter)] border-r border-[var(--border-subtle)] no-select text-xs text-[var(--text-muted)] overflow-hidden transition-colors"
+                style={{
+                    fontFamily: EDITOR_FONT_FAMILY,
+                    fontSize: `${EDITOR_FONT_SIZE}px`,
+                    lineHeight: `${EDITOR_LINE_HEIGHT}px`,
+                    paddingTop: `${EDITOR_PADDING}px`,
+                    paddingBottom: `${EDITOR_PADDING}px`,
+                    paddingRight: "12px",
+                }}
             >
                 <div className="flex flex-col items-end">
-                    {Array.from({ length: lineCount }, (_, i) => (
-                        <div key={i} className="leading-6 h-6">
-                            {i + 1}
-                        </div>
-                    ))}
+                    {Array.from({ length: lineCount }, (_, i) => {
+                        const isActive = i + 1 === activeLine;
+                        return (
+                            <div
+                                key={i}
+                                className={isActive ? "text-[var(--text-primary)] font-medium" : ""}
+                                style={{ height: `${EDITOR_LINE_HEIGHT}px`, lineHeight: `${EDITOR_LINE_HEIGHT}px` }}
+                            >
+                                {i + 1}
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
 
             {/* Editor Container */}
             <div className="flex-1 relative bg-[var(--bg-editor)] transition-colors">
-                {/* Syntax Highlighted Layer (visual only) */}
+                {/* Syntax Highlighted Layer (visual only).
+                    Active-line band lives inside this scroll container so it tracks
+                    scroll naturally — no JS scrollTop math required. */}
                 <div
                     ref={highlightRef}
-                    className="absolute inset-0 p-4 font-mono text-sm leading-6 text-[var(--text-primary)] pointer-events-none overflow-hidden whitespace-pre"
+                    className="absolute inset-0 text-[var(--text-primary)] pointer-events-none overflow-hidden"
                     aria-hidden="true"
+                    style={sharedTextStyle}
                 >
+                    <div
+                        className="absolute left-0 right-0 pointer-events-none"
+                        style={{
+                            top: `${EDITOR_PADDING + (activeLine - 1) * EDITOR_LINE_HEIGHT}px`,
+                            height: `${EDITOR_LINE_HEIGHT}px`,
+                            background: "var(--bg-hover)",
+                            opacity: 0.45,
+                        }}
+                    />
                     {highlightedLines.map((highlighted, i) => (
-                        <div key={i} className="h-6">
+                        <div key={i} style={{ height: `${EDITOR_LINE_HEIGHT}px`, lineHeight: `${EDITOR_LINE_HEIGHT}px`, position: "relative" }}>
                             {highlighted}
                         </div>
                     ))}
                 </div>
 
-{/* Actual Editable Textarea */}
+                {/* Actual Editable Textarea — transparent text, real caret */}
                 <textarea
                     ref={textareaRef}
                     value={content}
                     onChange={handleChange}
                     onPaste={handlePaste}
-                    onScroll={handleScroll}
                     spellCheck={false}
                     autoComplete="off"
                     autoCorrect="off"
                     autoCapitalize="off"
-                    className="absolute inset-0 w-full h-full p-4 font-mono text-sm leading-6 bg-transparent text-transparent caret-[var(--accent)] resize-none outline-none overflow-auto"
+                    className="absolute inset-0 w-full h-full bg-transparent text-transparent caret-[var(--accent)] resize-none outline-none overflow-auto border-0"
                     style={{
+                        ...sharedTextStyle,
                         caretColor: "var(--accent)",
-                        whiteSpace: "pre",
-                        wordWrap: "normal",
                     }}
                 />
             </div>
