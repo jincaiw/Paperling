@@ -25,12 +25,14 @@
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
-    "tailwindcss": "^4.1.18"
+    "tailwindcss": "^4.1.18",
+    "turndown": "^7.2.4"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
+    "@types/turndown": "^5.0.6",
     "@vitejs/plugin-react": "^4.6.0",
     "sharp": "^0.34.5",
     "typescript": "~5.8.3",

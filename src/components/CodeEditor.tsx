@@ -12,6 +12,7 @@ import {
 } from "../utils/editorActions";
 import { FindReplaceBar } from "./FindReplaceBar";
 import { FormatToolbar } from "./FormatToolbar";
+import { pasteUrlOnSelection, pasteUrlAutolink, pasteTsvAsTable, htmlToMarkdown } from "../utils/smartPaste";
 import type { Scroller } from "../utils/scrollSync";
 
 interface CodeEditorProps {
@@ -195,7 +196,7 @@ export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, on
         }
     }, [applyResult, getState]);
 
-    // Handle paste events - check for images in clipboard
+    // Handle paste events — order: image → smart paste rules → default text.
     const handlePaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
         const imageFile = getImageFromClipboard(e.nativeEvent);
 
@@ -229,12 +230,74 @@ export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, on
                 });
 
                 onImagePaste?.();
+                return;
             } catch (error) {
                 console.error('Failed to paste image:', error);
                 onError?.('Failed to save image. Please try again.');
+                return;
             }
         }
-    }, [content, onChange, onImagePaste, filePath]);
+
+        // Smart paste rules — run on text/html and text/plain payloads.
+        const t = textareaRef.current;
+        if (!t) return;
+        const cd = e.clipboardData;
+        if (!cd) return;
+        const html = cd.getData("text/html");
+        const text = cd.getData("text/plain");
+
+        const state = { text: t.value, selStart: t.selectionStart, selEnd: t.selectionEnd };
+
+        // 1) URL on selection → [text](url)
+        const urlOnSel = pasteUrlOnSelection(state, text);
+        if (urlOnSel) {
+            e.preventDefault();
+            applyResult(urlOnSel);
+            return;
+        }
+        // 2) Plain URL on empty selection → <url>
+        const autolink = pasteUrlAutolink(state, text);
+        if (autolink) {
+            e.preventDefault();
+            applyResult(autolink);
+            return;
+        }
+        // 3) TSV → table (only when no rich HTML present, so spreadsheet plain
+        //    paste wins, but a webpage with an HTML table goes through turndown)
+        if (!html) {
+            const tsv = pasteTsvAsTable(state, text);
+            if (tsv) {
+                e.preventDefault();
+                applyResult(tsv);
+                return;
+            }
+        }
+        // 4) Rich HTML → markdown via turndown (skipped if it's just a textual
+        //    fragment — heuristic: contains real tags)
+        if (html && /<\w+/.test(html)) {
+            e.preventDefault();
+            try {
+                const md = (await htmlToMarkdown(html)).trim();
+                if (md) {
+                    applyResult({
+                        text: state.text.slice(0, state.selStart) + md + state.text.slice(state.selEnd),
+                        selStart: state.selStart + md.length,
+                        selEnd: state.selStart + md.length,
+                    });
+                    return;
+                }
+            } catch {
+                // fall through to plain paste
+            }
+            // turndown failed or returned empty — paste the text/plain instead
+            applyResult({
+                text: state.text.slice(0, state.selStart) + text + state.text.slice(state.selEnd),
+                selStart: state.selStart + text.length,
+                selEnd: state.selStart + text.length,
+            });
+        }
+        // else: let default paste handle plain text
+    }, [content, onChange, onImagePaste, onError, filePath, applyResult]);
 
     // Calculate cursor position (line and column) and active line for highlight
     const updateCursorPosition = useCallback(() => {
