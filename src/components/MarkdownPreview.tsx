@@ -474,6 +474,41 @@ export function MarkdownPreview({
                     </a>
                 );
             }
+            // In-page hash link (#section). The Tauri webview's URL doesn't
+            // play well with native hash navigation, so we scroll explicitly.
+            // Falls back to a fuzzy heading-text match when the slug doesn't
+            // exactly match an existing id (different markdown anchor styles).
+            if (href && href.startsWith("#")) {
+                return (
+                    <a
+                        {...rest}
+                        href={href}
+                        onClick={(e) => {
+                            e.preventDefault();
+                            const id = decodeURIComponent(href.slice(1));
+                            let el: HTMLElement | null = document.getElementById(id);
+                            if (!el) {
+                                // Fuzzy fallback: find a heading whose textContent
+                                // slugifies to a string containing the requested id.
+                                const needle = id.toLowerCase().replace(/-/g, " ").trim();
+                                const headings = document.querySelectorAll<HTMLElement>(
+                                    ".markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4, .markdown-body h5, .markdown-body h6"
+                                );
+                                for (const h of headings) {
+                                    const text = (h.textContent ?? "").toLowerCase();
+                                    if (text.includes(needle) || needle.includes(text.trim())) {
+                                        el = h;
+                                        break;
+                                    }
+                                }
+                            }
+                            el?.scrollIntoView({ behavior: "smooth", block: "start" });
+                        }}
+                    >
+                        {children}
+                    </a>
+                );
+            }
             return <a href={href} {...rest}>{children}</a>;
         },
         pre: (props: React.HTMLAttributes<HTMLPreElement>) => <CodeBlock {...props} />,

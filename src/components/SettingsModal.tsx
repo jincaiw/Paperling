@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTheme, type Theme, type FontFamily, type FontSize } from "../context/ThemeContext";
 import {
-    getAutoSave, setAutoSave,
-    getFocusMode, setFocusMode,
     getTypewriterMode, setTypewriterMode,
     getToolbarEnabled, setToolbarEnabled,
     getAIConfig, setAIConfig,
@@ -77,8 +75,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const [filter, setFilter] = useState("");
     const { theme, setTheme, font, setFont, fontSize, setFontSize } = useTheme();
 
-    const [autoSave, setAutoSaveLocal] = useState(getAutoSave);
-    const [focus, setFocusLocal] = useState(getFocusMode);
     const [typewriter, setTypewriterLocal] = useState(getTypewriterMode);
     const [toolbar, setToolbarLocal] = useState(getToolbarEnabled);
 
@@ -227,10 +223,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                         {section === "editor" && (
                             <>
-                                {matches("focus") && (
-                                    <ToggleRow label="Focus mode" description="Dim non-active lines" checked={focus}
-                                        onChange={(v) => { setFocusLocal(v); setFocusMode(v); fire("marklite:focus-toggle", v); }} />
-                                )}
                                 {matches("typewriter") && (
                                     <ToggleRow label="Typewriter mode" description="Keep caret vertically centered" checked={typewriter}
                                         onChange={(v) => { setTypewriterLocal(v); setTypewriterMode(v); fire("marklite:typewriter-toggle", v); }} />
@@ -238,10 +230,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                 {matches("toolbar") && (
                                     <ToggleRow label="Show formatting toolbar" description="Toolbar above the editor" checked={toolbar}
                                         onChange={(v) => { setToolbarLocal(v); setToolbarEnabled(v); fire("marklite:toolbar-toggle", v); }} />
-                                )}
-                                {matches("auto-save") && (
-                                    <ToggleRow label="Auto-save" description="Save 1.5s after typing stops" checked={autoSave}
-                                        onChange={(v) => { setAutoSaveLocal(v); setAutoSave(v); fire("marklite:autosave-toggle", v); }} />
                                 )}
                             </>
                         )}

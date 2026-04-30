@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { stat } from "@tauri-apps/plugin-fs";
+import { invoke } from "@tauri-apps/api/core";
 import { getRecentFiles, removeRecentFile, type RecentFile } from "../utils/persistence";
 
 interface WelcomeScreenProps {
@@ -37,7 +37,7 @@ export function WelcomeScreen({ onOpenFile, onNewFile, onFileDrop, onOpenRecent 
         Promise.all(
             list.map(async (f) => {
                 try {
-                    await stat(f.path);
+                    await invoke("get_file_info", { path: f.path });
                     return null;
                 } catch {
                     return f.path;

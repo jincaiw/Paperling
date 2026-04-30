@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { listen, TauriEvent } from "@tauri-apps/api/event";
-import { stat } from "@tauri-apps/plugin-fs";
 
 import { ThemeProvider } from "./context/ThemeContext";
 import { TitleBar } from "./components/TitleBar";
@@ -24,15 +23,11 @@ import { getRecentFiles } from "./utils/persistence";
 import {
   addRecentFile,
   getAIConfig,
-  getAutoSave,
-  getFocusMode,
   getLastFile,
   getSavedViewMode,
   getSplitRatio,
   getToolbarEnabled,
   getTypewriterMode,
-  setAutoSave,
-  setFocusMode,
   setLastFile,
   setSavedViewMode,
   setSplitRatio,
@@ -68,13 +63,9 @@ function AppContent() {
   const [showPalette, setShowPalette] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [splitRatio, setSplitRatioState] = useState<number>(() => getSplitRatio());
-  const [autoSaveEnabled, setAutoSaveEnabled] = useState<boolean>(() => getAutoSave());
   const [aiConfig, setAiConfigState] = useState(() => getAIConfig());
-  const [focusModeEnabled, setFocusModeEnabled] = useState<boolean>(() => getFocusMode());
   const [typewriterModeEnabled, setTypewriterModeEnabled] = useState<boolean>(() => getTypewriterMode());
   const [toolbarVisible, setToolbarVisible] = useState<boolean>(() => getToolbarEnabled());
-  const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [externalChange, setExternalChange] = useState<{ kind: "modified" | "deleted"; lastMtime: number } | null>(null);
   const [cursorPosition, setCursorPosition] = useState({ line: 1, col: 1 });
   const [isLoading, setIsLoading] = useState(false);
 
@@ -125,7 +116,8 @@ function AppContent() {
   // Derived state
   const isDirty = content !== originalContent;
   const lineCount = useMemo(() => content.split("\n").length, [content]);
-  const hasFile = filePath !== null;
+  // "Has a buffer" — true once a file is opened OR a blank Untitled buffer is started
+  const hasFile = filePath !== null || fileName !== null;
   const wordCount = useMemo(() => getWordCount(content), [content]);
   const charCount = useMemo(() => content.length, [content]);
   // Average adult reading speed for prose: ~200 wpm. Markdown markup inflates
@@ -167,18 +159,12 @@ function AppContent() {
     setSplitRatio(splitRatio);
   }, [splitRatio]);
 
-  useEffect(() => {
-    setAutoSave(autoSaveEnabled);
-  }, [autoSaveEnabled]);
-
-  useEffect(() => { setFocusMode(focusModeEnabled); }, [focusModeEnabled]);
   useEffect(() => { setTypewriterMode(typewriterModeEnabled); }, [typewriterModeEnabled]);
   useEffect(() => { setToolbarEnabled(toolbarVisible); }, [toolbarVisible]);
 
   // Cross-component event listeners — settings menu and command palette toggle these
   useEffect(() => {
     const handlers: Array<[string, (e: Event) => void]> = [
-      ["marklite:focus-toggle", (e) => setFocusModeEnabled(!!(e as CustomEvent).detail?.enabled)],
       ["marklite:typewriter-toggle", (e) => setTypewriterModeEnabled(!!(e as CustomEvent).detail?.enabled)],
       ["marklite:toolbar-toggle", (e) => setToolbarVisible(!!(e as CustomEvent).detail?.enabled)],
     ];
@@ -193,110 +179,6 @@ function AppContent() {
       window.removeEventListener("storage", onStorage);
     };
   }, []);
-
-  // Listen for SettingsMenu toggling auto-save (cross-component event keeps both sides in sync)
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (typeof detail?.enabled === "boolean") setAutoSaveEnabled(detail.enabled);
-    };
-    window.addEventListener("marklite:autosave-toggle", handler);
-    return () => window.removeEventListener("marklite:autosave-toggle", handler);
-  }, []);
-
-  // External-change detection: poll file mtime every 4s. If the file was modified
-  // by something outside MarkLite, we either silently reload (clean buffer) or
-  // banner the user with a choice (dirty buffer). If it was deleted, banner only.
-  const lastMtimeRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (!filePath) {
-      lastMtimeRef.current = null;
-      setExternalChange(null);
-      return;
-    }
-    let cancelled = false;
-    let didInit = false;
-
-    const tick = async () => {
-      if (cancelled || !filePath) return;
-      try {
-        const s = await stat(filePath);
-        const mtime = s.mtime ? new Date(s.mtime).getTime() : 0;
-        if (!didInit) {
-          lastMtimeRef.current = mtime;
-          didInit = true;
-          return;
-        }
-        if (mtime !== lastMtimeRef.current) {
-          // Changed externally
-          if (content === originalContent) {
-            // Silently reload — buffer was clean
-            try {
-              const fileData = await invoke<FileData>("read_file", { path: filePath });
-              setContent(fileData.content);
-              setOriginalContent(fileData.content);
-              setFileSize(fileData.size);
-              lastMtimeRef.current = mtime;
-            } catch {
-              setExternalChange({ kind: "deleted", lastMtime: mtime });
-            }
-          } else {
-            setExternalChange({ kind: "modified", lastMtime: mtime });
-          }
-        }
-      } catch {
-        // File no longer exists
-        if (!externalChange) setExternalChange({ kind: "deleted", lastMtime: lastMtimeRef.current ?? 0 });
-      }
-    };
-
-    tick();
-    const id = window.setInterval(tick, 4000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, [filePath, content, originalContent, externalChange]);
-
-  const dismissExternalChange = useCallback(() => setExternalChange(null), []);
-  const reloadFromDisk = useCallback(async () => {
-    if (!filePath) return;
-    try {
-      const fileData = await invoke<FileData>("read_file", { path: filePath });
-      setContent(fileData.content);
-      setOriginalContent(fileData.content);
-      setFileSize(fileData.size);
-      const s = await stat(filePath);
-      lastMtimeRef.current = s.mtime ? new Date(s.mtime).getTime() : 0;
-      setExternalChange(null);
-    } catch (err) {
-      console.error("Reload failed:", err);
-      showToast("Failed to reload file", "error");
-    }
-  }, [filePath, showToast]);
-
-  // Auto-save: debounced 1.5s after typing stops, only if a file is open and dirty
-  useEffect(() => {
-    if (!autoSaveEnabled) return;
-    if (!filePath) return;
-    if (content === originalContent) return;
-
-    const timer = window.setTimeout(() => {
-      setAutoSaveStatus("saving");
-      invoke("save_file", { path: filePath, content })
-        .then(() => {
-          setOriginalContent(content);
-          setAutoSaveStatus("saved");
-          window.setTimeout(() => setAutoSaveStatus((s) => (s === "saved" ? "idle" : s)), 1500);
-        })
-        .catch((err) => {
-          console.error("Auto-save failed:", err);
-          setAutoSaveStatus("error");
-        });
-    }, 1500);
-
-    return () => window.clearTimeout(timer);
-  }, [autoSaveEnabled, content, originalContent, filePath]);
 
   useEffect(() => {
     // Restore last opened file once on app launch
@@ -420,7 +302,8 @@ function AppContent() {
     ];
     for (const c of candidates) {
       try {
-        await stat(c);
+        // get_file_info errors when the file doesn't exist; use it as a probe
+        await invoke("get_file_info", { path: c });
         loadFile(c);
         return;
       } catch {/* try next */}
@@ -687,73 +570,70 @@ function AppContent() {
       icon: "folder_open",
       run: handleOpenFile,
     });
-    items.push({
-      id: "file.save",
-      label: "Save",
-      hint: "Ctrl+S",
-      section: "File",
-      icon: "save",
-      run: handleSaveFile,
-    });
-    items.push({
-      id: "file.saveas",
-      label: "Save As…",
-      hint: "Ctrl+Shift+S",
-      section: "File",
-      icon: "save_as",
-      run: handleSaveAs,
-    });
+    // Save / Save As only make sense when a buffer is open
+    if (hasFile) {
+      items.push({
+        id: "file.save",
+        label: "Save",
+        hint: "Ctrl+S",
+        section: "File",
+        icon: "save",
+        run: handleSaveFile,
+      });
+      items.push({
+        id: "file.saveas",
+        label: "Save As…",
+        hint: "Ctrl+Shift+S",
+        section: "File",
+        icon: "save_as",
+        run: handleSaveAs,
+      });
+    }
 
-    // === View ===
-    items.push({
-      id: "view.preview",
-      label: "Switch to Reader mode",
-      hint: "Ctrl+E",
-      section: "View",
-      icon: "visibility",
-      run: () => setMode("preview"),
-    });
-    items.push({
-      id: "view.code",
-      label: "Switch to Code editor",
-      section: "View",
-      icon: "code",
-      run: () => setMode("code"),
-    });
-    items.push({
-      id: "view.split",
-      label: "Toggle Split view",
-      hint: "Ctrl+\\",
-      section: "View",
-      icon: "vertical_split",
-      run: handleToggleSplit,
-    });
-    items.push({
-      id: "view.explorer",
-      label: "Toggle file explorer",
-      hint: "Ctrl+Shift+E",
-      section: "View",
-      icon: "folder",
-      run: handleToggleFileExplorer,
-    });
-    items.push({
-      id: "view.toc",
-      label: "Toggle outline",
-      hint: "Ctrl+Shift+O",
-      section: "View",
-      icon: "format_list_bulleted",
-      run: handleToggleTOC,
-    });
+    // === View === only when a buffer exists
+    if (hasFile) {
+      items.push({
+        id: "view.preview",
+        label: "Switch to Reader mode",
+        hint: "Ctrl+E",
+        section: "View",
+        icon: "visibility",
+        run: () => setMode("preview"),
+      });
+      items.push({
+        id: "view.code",
+        label: "Switch to Code editor",
+        section: "View",
+        icon: "code",
+        run: () => setMode("code"),
+      });
+      items.push({
+        id: "view.split",
+        label: "Toggle Split view",
+        hint: "Ctrl+\\",
+        section: "View",
+        icon: "vertical_split",
+        run: handleToggleSplit,
+      });
+      items.push({
+        id: "view.explorer",
+        label: "Toggle file explorer",
+        hint: "Ctrl+Shift+E",
+        section: "View",
+        icon: "folder",
+        run: handleToggleFileExplorer,
+      });
+      items.push({
+        id: "view.toc",
+        label: "Toggle outline",
+        hint: "Ctrl+Shift+O",
+        section: "View",
+        icon: "format_list_bulleted",
+        run: handleToggleTOC,
+      });
+    }
 
     // === Toggles ===
-    items.push({
-      id: "toggle.focus",
-      label: focusModeEnabled ? "Disable Focus mode" : "Enable Focus mode",
-      section: "Toggles",
-      icon: "center_focus_strong",
-      keywords: "dim non-active line",
-      run: () => setFocusModeEnabled((v) => !v),
-    });
     items.push({
       id: "toggle.typewriter",
       label: typewriterModeEnabled ? "Disable Typewriter mode" : "Enable Typewriter mode",
@@ -768,13 +648,6 @@ function AppContent() {
       section: "Toggles",
       icon: "format_paint",
       run: () => setToolbarVisible((v) => !v),
-    });
-    items.push({
-      id: "toggle.autosave",
-      label: autoSaveEnabled ? "Disable auto-save" : "Enable auto-save",
-      section: "Toggles",
-      icon: "save_as",
-      run: () => setAutoSaveEnabled((v) => !v),
     });
 
     items.push({
@@ -844,8 +717,8 @@ function AppContent() {
   }, [
     handleNewFile, handleOpenFile, handleSaveFile, handleSaveAs,
     handleToggleSplit, handleToggleFileExplorer, handleToggleTOC,
-    loadFile, filePath, content,
-    focusModeEnabled, typewriterModeEnabled, toolbarVisible, autoSaveEnabled,
+    loadFile, filePath, content, hasFile,
+    typewriterModeEnabled, toolbarVisible,
   ]);
 
   return (
@@ -861,25 +734,6 @@ function AppContent() {
         onExportSuccess={(fmt) => showToast(`Exported as ${fmt}`, "success")}
         onExportError={(fmt) => showToast(`Failed to export ${fmt}`, "error")}
       />
-
-      {externalChange && hasFile && (
-        <div role="alert" className="px-4 py-2 bg-[var(--status-unsaved)]/15 border-b border-[var(--status-unsaved)]/30 flex items-center gap-3 text-sm text-[var(--text-primary)] animate-fade-in-down">
-          <span className="material-symbols-outlined text-[18px] text-[var(--status-unsaved)]">warning</span>
-          <span className="flex-1">
-            {externalChange.kind === "modified"
-              ? "This file was modified outside MarkLite."
-              : "This file was deleted or moved."}
-          </span>
-          {externalChange.kind === "modified" && (
-            <button onClick={reloadFromDisk} className="px-3 py-1 text-xs rounded-[var(--radius-sm)] bg-[var(--accent)] text-[var(--accent-text)] hover:opacity-90">
-              Reload from disk
-            </button>
-          )}
-          <button onClick={dismissExternalChange} className="px-3 py-1 text-xs rounded-[var(--radius-sm)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]">
-            Keep mine
-          </button>
-        </div>
-      )}
 
       {!hasFile ? (
         <WelcomeScreen onOpenFile={handleOpenFile} onNewFile={handleNewFile} onFileDrop={handleFileDrop} onOpenRecent={loadFile} />
@@ -909,7 +763,6 @@ function AppContent() {
                 filePath={filePath}
                 onScrollFraction={onCodeScrollFraction}
                 registerScroller={registerCodeScroller}
-                focusMode={focusModeEnabled}
                 typewriterMode={typewriterModeEnabled}
                 showToolbar={toolbarVisible}
                 aiConfig={aiConfig}
@@ -975,7 +828,6 @@ function AppContent() {
             wordCount={wordCount}
             charCount={charCount}
             readingTimeMin={readingTimeMin}
-            autoSaveStatus={autoSaveStatus}
           />
         </>
       )}
