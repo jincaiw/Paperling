@@ -95,11 +95,11 @@ export function FileExplorer({
             role="navigation"
             aria-label="File explorer"
             tabIndex={-1}
-            className={`fixed left-0 top-12 bottom-7 w-72 bg-[var(--bg-secondary)] border-r border-[var(--border)] z-50 shadow-2xl transition-transform duration-200 ease-out ${isOpen ? "translate-x-0" : "-translate-x-full"
+            className={`fixed left-0 top-12 bottom-7 w-72 bg-[var(--bg-secondary)] border-r border-[var(--border)] z-50 shadow-2xl flex flex-col overflow-hidden transition-transform duration-200 ease-out ${isOpen ? "translate-x-0" : "-translate-x-full"
                 }`}
         >
             {/* Header */}
-            <div className="h-10 px-4 flex items-center justify-between border-b border-[var(--border)] bg-[var(--bg-titlebar)]">
+            <div className="h-10 shrink-0 px-4 flex items-center justify-between border-b border-[var(--border)] bg-[var(--bg-titlebar)]">
                 <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)] no-select">
                     <span className="material-symbols-outlined text-[18px]">
                         folder_open
@@ -118,7 +118,7 @@ export function FileExplorer({
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto h-[calc(100%-2.5rem)]">
+            <div className="flex-1 min-h-0 overflow-y-auto">
                 {isLoading ? (
                     <div className="flex items-center justify-center h-32 text-[var(--text-secondary)] text-sm">
                         Loading...

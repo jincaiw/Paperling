@@ -26,7 +26,6 @@ interface CodeEditorProps {
     filePath?: string | null; // Current file path for saving images
     onScrollFraction?: (fraction: number) => void;
     registerScroller?: (scroller: Scroller | null) => void;
-    focusMode?: boolean;
     typewriterMode?: boolean;
     showToolbar?: boolean;
     aiConfig?: { endpoint: string; model: string; apiKey: string };
@@ -57,7 +56,7 @@ const sharedTextStyle: React.CSSProperties = {
     boxSizing: "border-box",
 };
 
-export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, onError, filePath, onScrollFraction, registerScroller, focusMode, typewriterMode, showToolbar, aiConfig }: CodeEditorProps) {
+export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, onError, filePath, onScrollFraction, registerScroller, typewriterMode, showToolbar, aiConfig }: CodeEditorProps) {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const gutterRef = useRef<HTMLDivElement>(null);
     const highlightRef = useRef<HTMLDivElement>(null);
@@ -753,23 +752,18 @@ export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, on
                             opacity: 0.45,
                         }}
                     />
-                    {highlightedLines.map((highlighted, i) => {
-                        const isActive = i + 1 === activeLine;
-                        return (
-                            <div
-                                key={i}
-                                style={{
-                                    height: `${EDITOR_LINE_HEIGHT}px`,
-                                    lineHeight: `${EDITOR_LINE_HEIGHT}px`,
-                                    position: "relative",
-                                    opacity: focusMode && !isActive ? 0.35 : 1,
-                                    transition: focusMode ? "opacity 150ms ease-out" : undefined,
-                                }}
-                            >
-                                {highlighted}
-                            </div>
-                        );
-                    })}
+                    {highlightedLines.map((highlighted, i) => (
+                        <div
+                            key={i}
+                            style={{
+                                height: `${EDITOR_LINE_HEIGHT}px`,
+                                lineHeight: `${EDITOR_LINE_HEIGHT}px`,
+                                position: "relative",
+                            }}
+                        >
+                            {highlighted}
+                        </div>
+                    ))}
                 </div>
 
                 <FindReplaceBar
