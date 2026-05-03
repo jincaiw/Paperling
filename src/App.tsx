@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { listen, TauriEvent } from "@tauri-apps/api/event";
 
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
+
 import { ThemeProvider } from "./context/ThemeContext";
 import { TitleBar } from "./components/TitleBar";
 import { WelcomeScreen } from "./components/WelcomeScreen";
@@ -19,6 +21,7 @@ import { createScrollSync } from "./utils/scrollSync";
 import { ShortcutCheatsheet } from "./components/ShortcutCheatsheet";
 import { CommandPalette, type PaletteCommand } from "./components/CommandPalette";
 import { SettingsModal } from "./components/SettingsModal";
+import { StatsDialog } from "./components/StatsDialog";
 import { getRecentFiles } from "./utils/persistence";
 import {
   addRecentFile,
@@ -66,6 +69,7 @@ function AppContent() {
   const [showCheatsheet, setShowCheatsheet] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showStats, setShowStats] = useState(false);
   const [splitRatio, setSplitRatioState] = useState<number>(() => getSplitRatio());
   const [aiConfig, setAiConfigState] = useState(() => getAIConfig());
   const [typewriterModeEnabled, setTypewriterModeEnabled] = useState<boolean>(() => getTypewriterMode());
@@ -615,6 +619,44 @@ function AppContent() {
         run: handleSaveAs,
       });
     }
+    if (filePath) {
+      items.push({
+        id: "file.reveal",
+        label: "Reveal in folder",
+        section: "File",
+        icon: "folder_open",
+        keywords: "show finder explorer locate",
+        run: () => {
+          revealItemInDir(filePath).catch((err) => {
+            console.error("Reveal failed:", err);
+            showToast("Could not reveal file", "error");
+          });
+        },
+      });
+      items.push({
+        id: "file.copypath",
+        label: "Copy file path",
+        section: "File",
+        icon: "content_copy",
+        keywords: "clipboard absolute",
+        run: () => {
+          navigator.clipboard.writeText(filePath).then(
+            () => showToast("File path copied", "success"),
+            () => showToast("Could not copy path", "error"),
+          );
+        },
+      });
+    }
+    if (hasFile) {
+      items.push({
+        id: "doc.stats",
+        label: "Show document statistics",
+        section: "File",
+        icon: "analytics",
+        keywords: "words count reading time",
+        run: () => setShowStats(true),
+      });
+    }
 
     // === View === only when a buffer exists
     if (hasFile) {
@@ -743,7 +785,7 @@ function AppContent() {
   }, [
     handleNewFile, handleOpenFile, handleSaveFile, handleSaveAs,
     handleToggleSplit, handleToggleFileExplorer, handleToggleTOC,
-    loadFile, filePath, content, hasFile,
+    loadFile, filePath, content, hasFile, showToast,
     typewriterModeEnabled, toolbarVisible,
   ]);
 
@@ -879,6 +921,7 @@ function AppContent() {
       )}
 
       <ShortcutCheatsheet isOpen={showCheatsheet} onClose={() => setShowCheatsheet(false)} />
+      <StatsDialog isOpen={showStats} content={content} onClose={() => setShowStats(false)} />
       <CommandPalette isOpen={showPalette} items={paletteItems} onClose={() => setShowPalette(false)} />
       <SettingsModal
         isOpen={showSettings}
