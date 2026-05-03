@@ -290,15 +290,31 @@ function AppContent() {
 
   // Wikilink click: resolve target relative to the current file's folder.
   // Tries `<target>.md` first, then `<target>` literal. Silently fails if neither exists.
+  // SECURITY: rejects path-traversal and absolute paths so a crafted document
+  // can't load arbitrary files outside the current folder.
   const handleWikilinkClick = useCallback(async (target: string) => {
     if (!filePath) return;
+    const cleaned = target.trim();
+    // Block traversal (`..`), path separators, drive letters, and absolute paths.
+    // Wikilinks should only reference siblings in the same folder.
+    if (
+      !cleaned ||
+      cleaned.includes("..") ||
+      cleaned.includes("/") ||
+      cleaned.includes("\\") ||
+      cleaned.includes("\0") ||
+      /^[a-zA-Z]:/.test(cleaned)
+    ) {
+      showToast(`Invalid wikilink target: [[${target}]]`, "error");
+      return;
+    }
     const lastSep = Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"));
     const dir = lastSep > 0 ? filePath.slice(0, lastSep) : "";
     const sep = filePath.includes("\\") ? "\\" : "/";
     const candidates = [
-      `${dir}${sep}${target}.md`,
-      `${dir}${sep}${target}.markdown`,
-      `${dir}${sep}${target}`,
+      `${dir}${sep}${cleaned}.md`,
+      `${dir}${sep}${cleaned}.markdown`,
+      `${dir}${sep}${cleaned}`,
     ];
     for (const c of candidates) {
       try {
