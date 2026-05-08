@@ -79,7 +79,14 @@ export function WelcomeScreen({ onOpenFile, onNewFile, onFileDrop, onOpenRecent 
         <main
             onDragOver={handleDragOver}
             onDrop={handleDrop}
-            className="flex-1 flex flex-col items-center justify-center p-6 no-select overflow-y-auto"
+            // `justify-start` (not `justify-center`) plus generous vertical
+            // padding keeps the logo anchored at the top of the visible area
+            // when the Recents list grows tall enough for the page to scroll.
+            // With `justify-center` + `overflow-y-auto` the centered content
+            // can be taller than the viewport, which causes flexbox to push
+            // the top edge (the logo) above the scrollable area — invisible
+            // unless the user scrolls up.
+            className="flex-1 flex flex-col items-center justify-start py-10 px-6 no-select overflow-y-auto"
         >
             <div className="flex flex-col items-center gap-8 max-w-md w-full text-center animate-fade-in-up">
                 <div className="flex items-center justify-center w-20 h-20">

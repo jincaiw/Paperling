@@ -21,9 +21,48 @@ import "@fontsource/inter/latin-600.css";
 import "@fontsource/inter/latin-700.css";
 import "@fontsource/inter/latin-800.css";
 
-// JetBrains Mono — code editor + inline `code`
-import "@fontsource/jetbrains-mono/latin-400.css";
-import "@fontsource/jetbrains-mono/latin-500.css";
+// JetBrains Mono — code editor + inline `code`. NOT loaded via the @fontsource
+// CSS file because that uses `font-display: swap`, which makes the editor
+// glyphs swap from a fallback monospace (e.g. Consolas) to JetBrains Mono once
+// the woff2 finishes downloading. The textarea's caret position is computed
+// against whatever font the textarea is currently rendering with, while the
+// syntax-highlight overlay re-flows simultaneously with slightly different
+// glyph advance widths — leaving the caret visually offset from the rendered
+// text. We override to `font-display: block` so the editor never paints in a
+// fallback metric: text is hidden for at most ~3s while the (already bundled,
+// near-instant) woff2 loads, and once shown it never reflows again.
+import jetbrainsMono400Url from "@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2?url";
+import jetbrainsMono500Url from "@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2?url";
+
+const jetbrainsMonoFaces = `
+@font-face {
+    font-family: 'JetBrains Mono';
+    font-style: normal;
+    font-display: block;
+    font-weight: 400;
+    src: url(${jetbrainsMono400Url}) format('woff2');
+}
+@font-face {
+    font-family: 'JetBrains Mono';
+    font-style: normal;
+    font-display: block;
+    font-weight: 500;
+    src: url(${jetbrainsMono500Url}) format('woff2');
+}`;
+
+if (typeof document !== "undefined") {
+    const style = document.createElement("style");
+    style.setAttribute("data-marklite-fonts", "jetbrains-mono");
+    style.textContent = jetbrainsMonoFaces;
+    document.head.appendChild(style);
+    // Eagerly kick off the font load so the editor doesn't sit blank for any
+    // perceptible window. With `block` display the page would still wait up to
+    // ~3s of natural browser timing; this gets us closer to ~50ms.
+    if (document.fonts && typeof document.fonts.load === "function") {
+        document.fonts.load("400 14px 'JetBrains Mono'").catch(() => {});
+        document.fonts.load("500 14px 'JetBrains Mono'").catch(() => {});
+    }
+}
 
 // Merriweather — serif option
 import "@fontsource/merriweather/latin-300.css";
