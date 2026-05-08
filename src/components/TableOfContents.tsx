@@ -26,7 +26,10 @@ export function TableOfContents({
     const [filter, setFilter] = useState("");
 
     const headings = useMemo((): TocItem[] => {
-        if (!content) return [];
+        // Skip the parse entirely when the panel isn't open. Saves walking
+        // every line for headings on every keystroke for users who don't
+        // currently have the outline visible.
+        if (!isOpen || !content) return [];
         const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
         const lines = normalized.split("\n");
         const items: TocItem[] = [];
@@ -45,7 +48,7 @@ export function TableOfContents({
             }
         });
         return items;
-    }, [content]);
+    }, [content, isOpen]);
 
     // Active heading: the last one whose source line is at-or-above the active line
     const activeHeadingIdx = useMemo(() => {

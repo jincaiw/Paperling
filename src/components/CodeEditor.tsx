@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect, useMemo, useState } from "react";
+import { useRef, useCallback, useEffect, useMemo, useState, memo, forwardRef } from "react";
 import { getImageFromClipboard, saveImageToFile, createMarkdownImage, insertAtCursor } from "../utils/imageUtils";
 import {
     handleTab,
@@ -57,6 +57,44 @@ const sharedTextStyle: React.CSSProperties = {
     overflowWrap: "normal",
     boxSizing: "border-box",
 };
+
+// Line-number gutter. Extracted + memoized so typing within a single line
+// (lineCount unchanged, activeLine unchanged) doesn't cause React to reconcile
+// thousands of <div>s on every keystroke. Only re-renders when the visible line
+// count or active line actually changes.
+const Gutter = memo(forwardRef<HTMLDivElement, { lineCount: number; activeLine: number }>(
+    function Gutter({ lineCount, activeLine }, ref) {
+        return (
+            <div
+                ref={ref}
+                className="w-14 shrink-0 bg-[var(--bg-gutter)] border-r border-[var(--border-subtle)] no-select text-xs text-[var(--text-muted)] overflow-hidden transition-colors"
+                style={{
+                    fontFamily: EDITOR_FONT_FAMILY,
+                    fontSize: `${EDITOR_FONT_SIZE}px`,
+                    lineHeight: `${EDITOR_LINE_HEIGHT}px`,
+                    paddingTop: `${EDITOR_PADDING}px`,
+                    paddingBottom: `${EDITOR_PADDING}px`,
+                    paddingRight: "12px",
+                }}
+            >
+                <div className="flex flex-col items-end">
+                    {Array.from({ length: lineCount }, (_, i) => {
+                        const isActive = i + 1 === activeLine;
+                        return (
+                            <div
+                                key={i}
+                                className={isActive ? "text-[var(--text-primary)] font-medium" : ""}
+                                style={{ height: `${EDITOR_LINE_HEIGHT}px`, lineHeight: `${EDITOR_LINE_HEIGHT}px` }}
+                            >
+                                {i + 1}
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        );
+    }
+));
 
 export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, onError, filePath, onScrollFraction, registerScroller, typewriterMode, showToolbar, wordWrap = true, spellCheck = false, aiConfig }: CodeEditorProps) {
     // When word wrap is on, long lines wrap inside the editor and the highlight
@@ -713,35 +751,11 @@ export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, on
             <div className="flex flex-1 overflow-hidden relative">
             {/* Line Numbers Gutter — hidden in word-wrap mode because wrapped
                 lines occupy multiple visual rows, so per-source-line numbers
-                would no longer align with the editor content. */}
+                would no longer align with the editor content. The Gutter is
+                memoized so typing within a single line doesn't reconcile
+                thousands of line-number divs on every keystroke. */}
             {!wordWrap && (
-            <div
-                ref={gutterRef}
-                className="w-14 shrink-0 bg-[var(--bg-gutter)] border-r border-[var(--border-subtle)] no-select text-xs text-[var(--text-muted)] overflow-hidden transition-colors"
-                style={{
-                    fontFamily: EDITOR_FONT_FAMILY,
-                    fontSize: `${EDITOR_FONT_SIZE}px`,
-                    lineHeight: `${EDITOR_LINE_HEIGHT}px`,
-                    paddingTop: `${EDITOR_PADDING}px`,
-                    paddingBottom: `${EDITOR_PADDING}px`,
-                    paddingRight: "12px",
-                }}
-            >
-                <div className="flex flex-col items-end">
-                    {Array.from({ length: lineCount }, (_, i) => {
-                        const isActive = i + 1 === activeLine;
-                        return (
-                            <div
-                                key={i}
-                                className={isActive ? "text-[var(--text-primary)] font-medium" : ""}
-                                style={{ height: `${EDITOR_LINE_HEIGHT}px`, lineHeight: `${EDITOR_LINE_HEIGHT}px` }}
-                            >
-                                {i + 1}
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
+                <Gutter ref={gutterRef} lineCount={lineCount} activeLine={activeLine} />
             )}
 
             {/* Editor Container */}
