@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo, useDeferredValue } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { listen, TauriEvent } from "@tauri-apps/api/event";
@@ -55,6 +55,27 @@ const getWordCount = (text: string): number => {
   if (!text || !text.trim()) return 0;
   return text.trim().split(/\s+/).length;
 };
+
+/**
+ * Returns a value that lags behind `value` by `delay` ms. Each new `value`
+ * resets the timer, so during continuous typing the returned value is stable
+ * and only commits to the latest input once the user pauses. Used to keep the
+ * heavy markdown preview off the typing critical path without leaving the
+ * preview "stuck" the way useDeferredValue can under starvation.
+ */
+function useDebouncedValue<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    if (Object.is(debounced, value)) return;
+    const id = window.setTimeout(() => setDebounced(value), delay);
+    return () => window.clearTimeout(id);
+    // We intentionally exclude `debounced` from deps — including it would
+    // re-arm the timer every time the timer commits, racing with the next
+    // input. We just want: input changes → wait `delay` → commit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, delay]);
+  return debounced;
+}
 
 function AppContent() {
   // File state
@@ -135,12 +156,14 @@ function AppContent() {
   // textarea feels laggy because React can't commit the new value until the tree
   // is reconciled.
   //
-  // useDeferredValue lets concurrent React keep the editor at 60fps. The heavy
-  // consumers (preview, TOC heading parse, palette heading scan, stats) read
-  // `deferredContent` and re-render at low priority, getting interrupted if the
-  // user types again before they finish. Editor itself still uses live `content`
-  // so what you typed appears immediately.
-  const deferredContent = useDeferredValue(content);
+  // We debounce the value passed to those heavy consumers by ~80ms — short
+  // enough to feel real-time during a normal pause between keystrokes, long
+  // enough that fast typing skips many intermediate re-renders. The editor
+  // itself still uses live `content` so the glyph you typed appears immediately.
+  // (We previously used useDeferredValue here, but under React StrictMode + the
+  // bursty state churn at file-open it could starve and leave the preview
+  // showing the empty initial value.)
+  const deferredContent = useDebouncedValue(content, 80);
 
   const lineCount = useMemo(() => content.split("\n").length, [content]);
   // Word/char counts feed the status bar — fine to lag a frame behind on huge
