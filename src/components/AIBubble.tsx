@@ -39,6 +39,18 @@ export function AIBubble({ anchor, selectedText, config, onReplace, onInsert, on
         }
     }, [anchor]);
 
+    // Final-cleanup: parents commonly unmount AIBubble outright (e.g. by
+    // setting their own `aiBubble` state to null) instead of toggling `anchor`.
+    // The effect above only fires while the component is alive, so we also
+    // abort here to prevent an in-flight fetch from calling setResult on an
+    // unmounted component (React 18+ no-ops the setState but logs a warning,
+    // and the request itself keeps running until the network resolves).
+    useEffect(() => {
+        return () => {
+            abortRef.current?.abort();
+        };
+    }, []);
+
     // Reposition the bubble so it stays inside the viewport. Recomputed when
     // the anchor moves or after a result/error appears (which changes height).
     useLayoutEffect(() => {

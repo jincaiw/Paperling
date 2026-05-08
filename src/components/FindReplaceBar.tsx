@@ -80,11 +80,14 @@ export function FindReplaceBar({
         }
     }, [isOpen, initialMode]);
 
-    // Recompute matches when query or content changes
+    // Recompute matches when query or content changes. Bail out by returning
+    // `prev` when nothing changed — without this, every editor keystroke causes
+    // setMatch to mint a fresh `{ matches: [], activeIdx: -1 }` for an empty
+    // query, which re-renders this dialog (and re-fires the auto-jump effect
+    // below) on every character typed in the editor.
     useEffect(() => {
         const m = findAll(content, query, caseSensitive, regex);
         setMatch((prev) => {
-            // Try to keep activeIdx pointing to a position near the selection
             let active = -1;
             if (m.length > 0) {
                 active = m.findIndex((pos) => pos >= selectionStart);
@@ -92,6 +95,14 @@ export function FindReplaceBar({
                 if (prev.activeIdx >= 0 && prev.activeIdx < m.length && prev.matches[prev.activeIdx] === m[prev.activeIdx]) {
                     active = prev.activeIdx;
                 }
+            }
+            // Same activeIdx + same-length + same-positions ⇒ nothing changed.
+            if (
+                prev.activeIdx === active &&
+                prev.matches.length === m.length &&
+                prev.matches.every((pos, i) => pos === m[i])
+            ) {
+                return prev;
             }
             return { matches: m, activeIdx: active };
         });

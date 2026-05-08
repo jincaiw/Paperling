@@ -49,7 +49,16 @@ const sharedTextStyle: React.CSSProperties = {
     padding: `${EDITOR_PADDING}px`,
     tabSize: EDITOR_TAB_SIZE,
     MozTabSize: EDITOR_TAB_SIZE,
+    // Lock every metric-affecting property to defend the textarea/overlay
+    // alignment guarantee. If a parent rule (theme, body, dialog, etc.) ever
+    // sets bold/italic/etc. on an ancestor, both layers must inherit the SAME
+    // value or the caret will visually offset from the rendered glyph.
+    fontWeight: 400,
+    fontStyle: "normal",
     fontVariantLigatures: "none",
+    fontVariantNumeric: "normal",
+    fontFeatureSettings: "normal",
+    fontVariationSettings: "normal",
     fontKerning: "none",
     letterSpacing: "0px",
     whiteSpace: "pre",
@@ -468,9 +477,14 @@ export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, on
     // re-running `highlightLine` over every line — and minting fresh React
     // elements for the unchanged ones — is wasted work. The cache returns the
     // identical React node for repeat line text; React's reconciler then
-    // short-circuits on `prev === next` and skips the unchanged children. Cache
-    // is per-component-instance so it dies with the editor; pruned when growth
-    // outpaces the visible line count by a comfortable margin.
+    // short-circuits on `prev === next` and skips the unchanged children.
+    //
+    // Cache is per-component-instance and bounded two ways:
+    //   1) HARD CAP via LRU eviction (Map insertion-order). Without this, a
+    //      doc where every line is unique (think 10k lines of UUIDs) would
+    //      grow the cache by `lines.length` per render forever.
+    //   2) Stale-entry pruning when growth outpaces in-use lines by >256.
+    const HIGHLIGHT_CACHE_MAX = 4096;
     const highlightCacheRef = useRef<Map<string, React.ReactNode>>(new Map());
     const highlightedLines = useMemo(() => {
         const cache = highlightCacheRef.current;
@@ -482,6 +496,10 @@ export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, on
             if (node === undefined) {
                 node = highlightLine(line);
                 cache.set(line, node);
+            } else {
+                // Re-insert to mark as MRU.
+                cache.delete(line);
+                cache.set(line, node);
             }
             out[i] = node;
             inUse.add(line);
@@ -490,6 +508,14 @@ export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, on
             for (const key of cache.keys()) {
                 if (!inUse.has(key)) cache.delete(key);
             }
+        }
+        // Hard ceiling regardless of in-use set size: protects against
+        // pathological docs where every line is unique and `inUse` itself is
+        // huge. Evict from the front (LRU) until under the cap.
+        while (cache.size > HIGHLIGHT_CACHE_MAX) {
+            const oldest = cache.keys().next().value;
+            if (oldest === undefined) break;
+            cache.delete(oldest);
         }
         return out;
     }, [lines]);

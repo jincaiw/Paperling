@@ -79,55 +79,101 @@ const IMAGE_MIME_TYPES: Record<string, string> = {
     'bmp': 'image/bmp'
 };
 
+// Module-level shared cache for local image blobs. Without this, a doc that
+// references the same image 50 times reads the file 50 times and creates 50
+// independent ObjectURLs. With it, repeat references hit memory.
+//
+// LRU eviction at CACHE_CAP entries: the Map preserves insertion order, so we
+// re-insert on hit (move to end) and evict from the front when full. Evicted
+// URLs are revoked so the image data can be GC'd.
+const LOCAL_IMAGE_CACHE = new Map<string, string>();
+const LOCAL_IMAGE_CACHE_CAP = 100;
+
+async function getCachedLocalImageUrl(fullPath: string, mimeType: string): Promise<string> {
+    const hit = LOCAL_IMAGE_CACHE.get(fullPath);
+    if (hit !== undefined) {
+        // Move-to-end so this entry is now most-recently-used.
+        LOCAL_IMAGE_CACHE.delete(fullPath);
+        LOCAL_IMAGE_CACHE.set(fullPath, hit);
+        return hit;
+    }
+    const data = await readFile(fullPath);
+    const blob = new Blob([new Uint8Array(data)], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    LOCAL_IMAGE_CACHE.set(fullPath, url);
+    if (LOCAL_IMAGE_CACHE.size > LOCAL_IMAGE_CACHE_CAP) {
+        const oldestKey = LOCAL_IMAGE_CACHE.keys().next().value;
+        if (oldestKey !== undefined) {
+            const oldUrl = LOCAL_IMAGE_CACHE.get(oldestKey);
+            if (oldUrl) URL.revokeObjectURL(oldUrl);
+            LOCAL_IMAGE_CACHE.delete(oldestKey);
+        }
+    }
+    return url;
+}
+
+/**
+ * Reject paths that would escape the markdown file's directory or name an
+ * absolute location. The capabilities allow `**` reads, so we have to enforce
+ * the boundary in code: a malicious .md must not be able to use
+ * `![pwn](../../../etc/passwd)` to peek at arbitrary files.
+ */
+function isUnsafeRelativePath(p: string): boolean {
+    if (!p) return true;
+    if (/\0/.test(p)) return true;
+    // Absolute paths: leading slash, leading backslash, or drive letter.
+    if (/^([a-zA-Z]:|\/|\\)/.test(p)) return true;
+    // Any segment that is exactly `..` (handles foo/../etc, ../etc, etc.).
+    const segments = p.split(/[/\\]+/);
+    return segments.some((seg) => seg === "..");
+}
+
 // Component to handle local image loading
 function LocalImage({ src, alt, baseDir, ...props }: { src: string; alt: string; baseDir: string | null } & React.ImgHTMLAttributes<HTMLImageElement>) {
     const [imageSrc, setImageSrc] = useState<string>('');
     const [error, setError] = useState(false);
 
     useEffect(() => {
-        let objectUrl: string | null = null;
+        if (!baseDir || !src) return;
 
-        const loadImage = async () => {
-            if (!baseDir || !src) return;
+        // External URLs and data: URIs go straight to the <img>.
+        if (src.includes('://') || src.startsWith('data:')) {
+            setImageSrc(src);
+            setError(false);
+            return;
+        }
 
-            // Check if it's a relative path
-            if (src.startsWith('./') || src.startsWith('../') || (!src.includes('://') && !src.startsWith('data:'))) {
-                try {
-                    // Remove leading ./ if present
-                    const cleanPath = src.startsWith('./') ? src.slice(2) : src;
-                    // Construct full path - handle both Windows and Unix separators
-                    const sep = baseDir.includes('\\') ? '\\' : '/';
-                    const fullPath = `${baseDir}${sep}${cleanPath.replace(/[/\\]/g, sep)}`;
+        // Strip a leading `./` then validate. Anything with a `..` segment, an
+        // absolute prefix, or a drive letter is rejected — see
+        // isUnsafeRelativePath above.
+        const cleanPath = src.startsWith('./') ? src.slice(2) : src;
+        if (isUnsafeRelativePath(cleanPath)) {
+            setError(true);
+            return;
+        }
 
-                    // Read the file as binary
-                    const data = await readFile(fullPath);
+        const sep = baseDir.includes('\\') ? '\\' : '/';
+        const fullPath = `${baseDir}${sep}${cleanPath.replace(/[/\\]/g, sep)}`;
+        const ext = cleanPath.split('.').pop()?.toLowerCase() || 'png';
+        const mimeType = IMAGE_MIME_TYPES[ext] || 'image/png';
 
-                    // Detect image type from extension
-                    const ext = cleanPath.split('.').pop()?.toLowerCase() || 'png';
-                    const mimeType = IMAGE_MIME_TYPES[ext] || 'image/png';
-
-                    // Use Blob + ObjectURL instead of base64 for better performance
-                    const blob = new Blob([data], { type: mimeType });
-                    objectUrl = URL.createObjectURL(blob);
-                    setImageSrc(objectUrl);
+        let cancelled = false;
+        getCachedLocalImageUrl(fullPath, mimeType)
+            .then((url) => {
+                if (!cancelled) {
+                    setImageSrc(url);
                     setError(false);
-                } catch (err) {
-                    console.error('Failed to load image:', err);
-                    setError(true);
                 }
-            } else {
-                // External URL or data URL - use as is
-                setImageSrc(src);
-            }
-        };
+            })
+            .catch((err) => {
+                console.error('Failed to load image:', err);
+                if (!cancelled) setError(true);
+            });
 
-        loadImage();
-
-        // Revoke object URL on cleanup to prevent memory leaks
         return () => {
-            if (objectUrl) {
-                URL.revokeObjectURL(objectUrl);
-            }
+            cancelled = true;
+            // Don't revoke the URL — the cache owns it. Cache eviction handles
+            // revocation when the entry is pushed out by LRU pressure.
         };
     }, [src, baseDir]);
 
@@ -434,12 +480,21 @@ export function MarkdownPreview({
 
     // Toggle a task list checkbox by index — write back to the source markdown.
     // Counts task items in document order; toggles the Nth one.
+    // SKIPS lines inside fenced code blocks so a literal `- [ ] foo` written
+    // in a documentation example doesn't shift the index of the real tasks.
     const handleTaskToggle = useCallback((index: number, checked: boolean) => {
         if (!onContentChange) return;
         const lines = content.split("\n");
         let count = 0;
+        let inFence = false;
+        const fenceRe = /^(\s*)(```|~~~)/;
         const taskRe = /^(\s*[-*+]\s+\[)([ xX])(\]\s+)/;
         for (let i = 0; i < lines.length; i++) {
+            if (fenceRe.test(lines[i])) {
+                inFence = !inFence;
+                continue;
+            }
+            if (inFence) continue;
             const m = lines[i].match(taskRe);
             if (m) {
                 if (count === index) {
@@ -539,20 +594,31 @@ export function MarkdownPreview({
         h4: (props: React.HTMLAttributes<HTMLHeadingElement>) => <HeadingWithAnchor level={4} {...props} />,
         h5: (props: React.HTMLAttributes<HTMLHeadingElement>) => <HeadingWithAnchor level={5} {...props} />,
         h6: (props: React.HTMLAttributes<HTMLHeadingElement>) => <HeadingWithAnchor level={6} {...props} />,
-        // Interactive task checkbox: react-markdown + remarkGfm renders <input type="checkbox" disabled />
+        // Interactive task checkbox: react-markdown + remarkGfm renders <input type="checkbox" disabled />.
+        // We capture the task's positional index AT RENDER TIME (so each <input>'s
+        // closure remembers its own index) — not on click. The previous form
+        // `onToggle={(c) => handleTaskToggle(counter.current++, c)}` incremented
+        // the counter on click, which meant clicking any checkbox toggled the
+        // (click-count)-th task in source order, not the task that was actually
+        // clicked. The capture-on-render form always toggles the right task.
         input: ({ type, checked, ...rest }: React.InputHTMLAttributes<HTMLInputElement>) => {
             if (type !== "checkbox") return <input type={type} checked={checked} {...rest} />;
+            const idx = taskCheckboxCounter.current++;
             return (
                 <InteractiveTaskCheckbox
                     initialChecked={!!checked}
-                    onToggle={(c) => handleTaskToggle(taskCheckboxCounter.current++, c)}
+                    onToggle={(c) => handleTaskToggle(idx, c)}
                 />
             );
         },
     }), [baseDir, handleTaskToggle, onWikilinkClick]);
 
     // Reset the task index counter on every render so the next render starts at 0.
-    // (react-markdown renders synchronously top-to-bottom, so order matches doc order)
+    // react-markdown traverses the AST top-to-bottom inside the same render
+    // pass, so by the time react-markdown finishes the counter equals the
+    // total task count. StrictMode dev double-invokes the render body but
+    // resets the counter at the top of each pass, so each <input>'s captured
+    // idx is consistent regardless of which pass committed.
     const taskCheckboxCounter = useRef(0);
     taskCheckboxCounter.current = 0;
 

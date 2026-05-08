@@ -110,10 +110,14 @@ export function CommandPalette({ isOpen, items, onClose }: CommandPaletteProps) 
         return out;
     }, [ranked]);
 
-    // Keep activeIdx valid when results change
+    // Keep activeIdx valid when results change. Functional update so React
+    // bails out via Object.is when no clamp is needed — otherwise this effect
+    // would queue a setState on every render where activeIdx is already in
+    // range, triggering the same setState-in-effect pattern that caused the
+    // earlier "Maximum update depth" crash.
     useEffect(() => {
-        if (activeIdx >= ranked.length) setActiveIdx(0);
-    }, [ranked.length, activeIdx]);
+        setActiveIdx((prev) => (prev >= ranked.length ? 0 : prev));
+    }, [ranked.length]);
 
     // Auto-scroll active row into view
     useEffect(() => {
