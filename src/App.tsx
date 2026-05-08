@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, useDeferredValue } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { listen, TauriEvent } from "@tauri-apps/api/event";
@@ -125,13 +125,29 @@ function AppContent() {
 
   // Derived state
   const isDirty = content !== originalContent;
-  const lineCount = useMemo(() => content.split("\n").length, [content]);
   // "Has a buffer" — true once a file is opened OR a blank Untitled buffer is started
   const hasFile = filePath !== null || fileName !== null;
-  const wordCount = useMemo(() => getWordCount(content), [content]);
-  const charCount = useMemo(() => content.length, [content]);
-  // Average adult reading speed for prose: ~200 wpm. Markdown markup inflates
-  // word count slightly, but the rough number is what users actually want.
+
+  // PERF: Typing in the editor calls setContent on every keystroke, which would
+  // synchronously re-render every consumer of `content` — including the markdown
+  // preview, which runs remark-gfm + rehype-highlight + react-markdown over the
+  // entire document. On a few-hundred-line file that's 50-200ms of work and the
+  // textarea feels laggy because React can't commit the new value until the tree
+  // is reconciled.
+  //
+  // useDeferredValue lets concurrent React keep the editor at 60fps. The heavy
+  // consumers (preview, TOC heading parse, palette heading scan, stats) read
+  // `deferredContent` and re-render at low priority, getting interrupted if the
+  // user types again before they finish. Editor itself still uses live `content`
+  // so what you typed appears immediately.
+  const deferredContent = useDeferredValue(content);
+
+  const lineCount = useMemo(() => content.split("\n").length, [content]);
+  // Word/char counts feed the status bar — fine to lag a frame behind on huge
+  // docs, so they read deferred too.
+  const wordCount = useMemo(() => getWordCount(deferredContent), [deferredContent]);
+  const charCount = deferredContent.length;
+  // Average adult reading speed for prose: ~200 wpm.
   const readingTimeMin = useMemo(() => wordCount / 200, [wordCount]);
 
   // Show toast helper
@@ -753,8 +769,10 @@ function AppContent() {
     }
 
     // === Headings of current document ===
-    if (content) {
-      const lines = content.split("\n");
+    // Use deferredContent so a single keystroke doesn't re-scan every line for
+    // headings. The palette is closed most of the time anyway.
+    if (deferredContent) {
+      const lines = deferredContent.split("\n");
       lines.forEach((line, idx) => {
         const m = line.match(/^(#{1,6})\s+(.+)$/);
         if (m) {
@@ -785,7 +803,7 @@ function AppContent() {
   }, [
     handleNewFile, handleOpenFile, handleSaveFile, handleSaveAs,
     handleToggleSplit, handleToggleFileExplorer, handleToggleTOC,
-    loadFile, filePath, content, hasFile, showToast,
+    loadFile, filePath, deferredContent, hasFile, showToast,
     typewriterModeEnabled, toolbarVisible,
   ]);
 
@@ -854,7 +872,7 @@ function AppContent() {
               }}
             >
               <MarkdownPreview
-                content={content}
+                content={deferredContent}
                 fileName={fileName || ""}
                 lineCount={lineCount}
                 fileSize={fileSize}
@@ -881,7 +899,7 @@ function AppContent() {
           />
           <TableOfContents
             isOpen={showTOC}
-            content={content}
+            content={deferredContent}
             onClose={closeAllPanels}
             activeLine={mode === "preview" ? previewLine : cursorPosition.line}
           />
@@ -921,7 +939,7 @@ function AppContent() {
       )}
 
       <ShortcutCheatsheet isOpen={showCheatsheet} onClose={() => setShowCheatsheet(false)} />
-      <StatsDialog isOpen={showStats} content={content} onClose={() => setShowStats(false)} />
+      <StatsDialog isOpen={showStats} content={deferredContent} onClose={() => setShowStats(false)} />
       <CommandPalette isOpen={showPalette} items={paletteItems} onClose={() => setShowPalette(false)} />
       <SettingsModal
         isOpen={showSettings}
