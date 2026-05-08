@@ -27,6 +27,18 @@ export interface AIConfig {
     apiKey: string;
 }
 
+/** Hard timeout for an AI request. A misconfigured endpoint or a stuck local
+ *  llama.cpp process otherwise leaves the bubble spinning forever; 60s is
+ *  long enough for slow local models on first load but short enough that the
+ *  user gets a clear error rather than a frozen UI. */
+const AI_REQUEST_TIMEOUT_MS = 60_000;
+
+/** Cap on what we accept back from the AI. Pasting hundreds of MB of model
+ *  output into the editor would freeze the textarea/preview; a 200 KB ceiling
+ *  covers any reasonable rewrite/expand and matches what a sane chat
+ *  completion returns. */
+const AI_MAX_OUTPUT_CHARS = 200_000;
+
 /** True when the URL is well-formed and uses http(s). */
 export function isValidEndpoint(raw: string): boolean {
     try {
@@ -49,23 +61,43 @@ export async function runAIAction(
     }
     if (!cfg.model) throw new Error("AI model not configured.");
 
-    const res = await fetch(cfg.endpoint, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}),
-        },
-        body: JSON.stringify({
-            model: cfg.model,
-            messages: [
-                { role: "system", content: SYSTEM_PROMPTS[action] },
-                { role: "user", content: text },
-            ],
-            temperature: 0.7,
-            stream: false,
-        }),
-        signal,
-    });
+    // Compose the user-supplied AbortSignal with our timeout signal so either
+    // path (user clicks close, or 60s elapses) cancels the in-flight request.
+    const timeoutCtrl = new AbortController();
+    const timeoutId = window.setTimeout(() => timeoutCtrl.abort(), AI_REQUEST_TIMEOUT_MS);
+    const onUserAbort = () => timeoutCtrl.abort();
+    signal?.addEventListener("abort", onUserAbort);
+
+    let res: Response;
+    try {
+        res = await fetch(cfg.endpoint, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}),
+            },
+            body: JSON.stringify({
+                model: cfg.model,
+                messages: [
+                    { role: "system", content: SYSTEM_PROMPTS[action] },
+                    { role: "user", content: text },
+                ],
+                temperature: 0.7,
+                stream: false,
+            }),
+            signal: timeoutCtrl.signal,
+        });
+    } catch (e) {
+        // If we tripped the timeout, surface that specifically so the user
+        // doesn't see a generic "AbortError" and think they cancelled it.
+        if (timeoutCtrl.signal.aborted && !signal?.aborted) {
+            throw new Error(`AI request timed out after ${AI_REQUEST_TIMEOUT_MS / 1000}s.`);
+        }
+        throw e;
+    } finally {
+        window.clearTimeout(timeoutId);
+        signal?.removeEventListener("abort", onUserAbort);
+    }
 
     if (!res.ok) {
         const body = await res.text();
@@ -78,5 +110,11 @@ export async function runAIAction(
         data?.message?.content ?? // ollama native shape, also handled
         "";
     if (!content) throw new Error("AI returned an empty response.");
-    return String(content).trim();
+    const out = String(content).trim();
+    // Truncate runaway responses. Markdown editors don't need megabyte-scale
+    // suggestions, and pasting one in tanks input latency for a long time.
+    if (out.length > AI_MAX_OUTPUT_CHARS) {
+        return out.slice(0, AI_MAX_OUTPUT_CHARS) + "\n\n[Response truncated]";
+    }
+    return out;
 }

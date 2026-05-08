@@ -2,6 +2,23 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use thiserror::Error;
 
+/// Hard ceiling on text-file content. 50 MB easily covers any sane markdown
+/// document while keeping a single careless `read_file` from holding hundreds
+/// of MB of UTF-8 in webview memory. Above this we fail fast with a clear
+/// error so the user sees a toast instead of a frozen editor.
+const MAX_TEXT_FILE_BYTES: u64 = 50 * 1024 * 1024;
+
+/// Hard ceiling on a pasted image. Markdown editors get pasted screenshots
+/// regularly; 25 MB is generous (a 4K PNG screenshot is ~5–10 MB) but blocks a
+/// runaway clipboard payload from filling the user's disk.
+const MAX_IMAGE_BYTES: usize = 25 * 1024 * 1024;
+
+/// Whitelist of allowed image extensions for `save_image`. Anything else is
+/// refused — prevents a malicious caller from writing an arbitrary `.exe` /
+/// `.dll` / `.lnk` into the user's documents folder under the cover of an
+/// image-paste flow.
+const ALLOWED_IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"];
+
 /// Error type for file operation commands
 #[derive(Debug, Error)]
 pub enum CommandError {
@@ -11,6 +28,8 @@ pub enum CommandError {
     ReadError(String),
     #[error("Failed to write file: {0}")]
     WriteError(String),
+    #[error("File too large: {0}")]
+    TooLarge(String),
 }
 
 impl Serialize for CommandError {
@@ -36,16 +55,27 @@ pub struct FileData {
 #[tauri::command]
 pub async fn read_file(path: String) -> Result<FileData, CommandError> {
     let file_path = PathBuf::from(&path);
-    
+
     if !file_path.exists() {
         return Err(CommandError::FileNotFound(path));
     }
-    
-    let content = tokio::fs::read_to_string(&file_path)
+
+    // Stat first so we can refuse oversized files before pulling them into
+    // memory. Without this, opening a multi-GB log accidentally renamed `.md`
+    // would freeze the UI thread for tens of seconds.
+    let metadata = tokio::fs::metadata(&file_path)
         .await
         .map_err(|e| CommandError::ReadError(e.to_string()))?;
-    
-    let metadata = tokio::fs::metadata(&file_path)
+
+    if metadata.len() > MAX_TEXT_FILE_BYTES {
+        return Err(CommandError::TooLarge(format!(
+            "File is {} MB; maximum is {} MB",
+            metadata.len() / (1024 * 1024),
+            MAX_TEXT_FILE_BYTES / (1024 * 1024),
+        )));
+    }
+
+    let content = tokio::fs::read_to_string(&file_path)
         .await
         .map_err(|e| CommandError::ReadError(e.to_string()))?;
     
@@ -69,10 +99,21 @@ pub async fn read_file(path: String) -> Result<FileData, CommandError> {
 /// Save content to a file
 #[tauri::command]
 pub async fn save_file(path: String, content: String) -> Result<(), CommandError> {
+    // Mirror the read-side limit. Refusing to write a >50 MB markdown file
+    // protects the user from accidentally truncating something pasted from
+    // another tool, and matches what `read_file` would refuse to load back.
+    if content.len() as u64 > MAX_TEXT_FILE_BYTES {
+        return Err(CommandError::TooLarge(format!(
+            "Document is {} MB; maximum is {} MB",
+            content.len() / (1024 * 1024),
+            MAX_TEXT_FILE_BYTES / (1024 * 1024),
+        )));
+    }
+
     tokio::fs::write(&path, &content)
         .await
         .map_err(|e| CommandError::WriteError(e.to_string()))?;
-    
+
     Ok(())
 }
 
@@ -165,7 +206,10 @@ pub async fn list_directory_files(directory: String) -> Result<Vec<FileEntry>, C
 
 /// Strip any path components from a filename so it can't traverse outside the
 /// images directory. Rejects empty / dot-only names and names with separators,
-/// drive letters, or NUL bytes. Returns just the basename when valid.
+/// drive letters, or NUL bytes. Also enforces an extension whitelist so the
+/// "image paste" command can't be used to drop a `.exe` / `.dll` / `.lnk`
+/// into the user's documents folder under cover of a markdown image flow.
+/// Returns just the basename when valid.
 fn sanitize_image_name(name: &str) -> Result<String, CommandError> {
     let trimmed = name.trim();
     if trimmed.is_empty() || trimmed == "." || trimmed == ".." {
@@ -182,7 +226,19 @@ fn sanitize_image_name(name: &str) -> Result<String, CommandError> {
     if basename != trimmed {
         return Err(CommandError::WriteError("Invalid image filename".to_string()));
     }
-    Ok(basename.to_string())
+    // Enforce extension whitelist (case-insensitive). A name with no extension,
+    // or one whose extension isn't a known image type, is rejected — this is
+    // a defense-in-depth check on top of the basename validation above.
+    let ext = std::path::Path::new(basename)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase());
+    match ext {
+        Some(e) if ALLOWED_IMAGE_EXTS.contains(&e.as_str()) => Ok(basename.to_string()),
+        _ => Err(CommandError::WriteError(
+            "Image filename must end in .png/.jpg/.jpeg/.gif/.webp/.bmp/.svg".to_string(),
+        )),
+    }
 }
 
 /// Save image data to a file in the images subdirectory
@@ -193,6 +249,13 @@ pub async fn save_image(
     image_data: Vec<u8>,
     image_name: String,
 ) -> Result<String, CommandError> {
+    if image_data.len() > MAX_IMAGE_BYTES {
+        return Err(CommandError::TooLarge(format!(
+            "Image is {} MB; maximum is {} MB",
+            image_data.len() / (1024 * 1024),
+            MAX_IMAGE_BYTES / (1024 * 1024),
+        )));
+    }
     let safe_name = sanitize_image_name(&image_name)?;
     let md_path = PathBuf::from(&md_file_path);
 
@@ -241,5 +304,25 @@ mod tests {
         assert!(sanitize_image_name(".").is_err());
         assert!(sanitize_image_name("").is_err());
         assert!(sanitize_image_name("\0").is_err());
+    }
+
+    #[test]
+    fn rejects_non_image_extensions() {
+        assert!(sanitize_image_name("malware.exe").is_err());
+        assert!(sanitize_image_name("script.lnk").is_err());
+        assert!(sanitize_image_name("payload.dll").is_err());
+        assert!(sanitize_image_name("noext").is_err());
+        assert!(sanitize_image_name("trailing.").is_err());
+        // Extension matching is case-insensitive — uppercase OK.
+        assert!(sanitize_image_name("photo.PNG").is_ok());
+        assert!(sanitize_image_name("photo.JpG").is_ok());
+    }
+
+    #[test]
+    fn accepts_all_whitelisted_extensions() {
+        for ext in &["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"] {
+            let name = format!("img.{}", ext);
+            assert!(sanitize_image_name(&name).is_ok(), "rejected {}", name);
+        }
     }
 }
