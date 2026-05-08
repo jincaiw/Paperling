@@ -464,8 +464,35 @@ export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, on
         return () => registerScroller(null);
     }, [registerScroller]);
 
-    // Memoize highlighted lines to avoid recalculating on non-content re-renders
-    const highlightedLines = useMemo(() => lines.map((line) => highlightLine(line)), [lines]);
+    // Per-line highlight cache. Most keystrokes only change ONE source line, so
+    // re-running `highlightLine` over every line — and minting fresh React
+    // elements for the unchanged ones — is wasted work. The cache returns the
+    // identical React node for repeat line text; React's reconciler then
+    // short-circuits on `prev === next` and skips the unchanged children. Cache
+    // is per-component-instance so it dies with the editor; pruned when growth
+    // outpaces the visible line count by a comfortable margin.
+    const highlightCacheRef = useRef<Map<string, React.ReactNode>>(new Map());
+    const highlightedLines = useMemo(() => {
+        const cache = highlightCacheRef.current;
+        const out: React.ReactNode[] = new Array(lines.length);
+        const inUse = new Set<string>();
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            let node = cache.get(line);
+            if (node === undefined) {
+                node = highlightLine(line);
+                cache.set(line, node);
+            }
+            out[i] = node;
+            inUse.add(line);
+        }
+        if (cache.size > inUse.size + 256) {
+            for (const key of cache.keys()) {
+                if (!inUse.has(key)) cache.delete(key);
+            }
+        }
+        return out;
+    }, [lines]);
 
     // Typewriter mode: keep the active line vertically centered as the caret moves.
     useEffect(() => {
