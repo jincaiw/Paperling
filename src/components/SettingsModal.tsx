@@ -105,6 +105,20 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         };
     }, [isOpen, onClose]);
 
+    // Persist AI fields on close. The endpoint/model/key inputs save on blur,
+    // but Escape-to-close or backdrop-click can fire before the input loses
+    // focus, dropping the in-flight edit. Refresh persistence on every close
+    // transition so unblurred edits survive (only when the endpoint is valid;
+    // an invalid URL is left unsaved so the user can fix it on next open).
+    const aiRef = useRef(ai);
+    aiRef.current = ai;
+    useEffect(() => {
+        if (isOpen) return; // only fire on open→close transition
+        const current = aiRef.current;
+        if (current.endpoint && !isValidEndpoint(current.endpoint)) return;
+        setAIConfig(current);
+    }, [isOpen]);
+
     if (!isOpen) return null;
 
     const matches = (text: string) => !filter || text.toLowerCase().includes(filter.toLowerCase());

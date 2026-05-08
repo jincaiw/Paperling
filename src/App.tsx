@@ -227,13 +227,14 @@ function AppContent() {
     ];
     handlers.forEach(([k, h]) => window.addEventListener(k, h));
 
-    // Re-read AI config when settings modal closes — cheap, single localStorage read
-    const onStorage = () => setAiConfigState(getAIConfig());
-    window.addEventListener("storage", onStorage);
+    // Note: there used to be a `storage` event listener here that re-read the
+    // AI config. It was dead code — the spec only fires `storage` events on
+    // OTHER documents/tabs that mutate localStorage, never on the writing
+    // document. The actual refresh path is the explicit `setAiConfigState(
+    // getAIConfig())` call in SettingsModal's onClose, which works correctly.
 
     return () => {
       handlers.forEach(([k, h]) => window.removeEventListener(k, h));
-      window.removeEventListener("storage", onStorage);
     };
   }, []);
 
@@ -249,6 +250,11 @@ function AppContent() {
           setContent(fileData.content);
           setOriginalContent(fileData.content);
           setFileSize(fileData.size);
+          // Bump the recents entry's timestamp to "now" so it sorts as
+          // most-recent. Previously the restored file kept the stale openedAt
+          // from whenever it was originally opened, which made the welcome
+          // screen show "3d ago" for the file you'd just been editing.
+          addRecentFile(fileData.path, fileData.name);
         })
         .catch(() => {
           setLastFile(null);
@@ -258,16 +264,28 @@ function AppContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Latest content + originalContent are read via refs inside `loadFile` so
+  // its identity stays stable across keystrokes. Without this, every typed
+  // character would change `loadFile`'s reference, which would tear down and
+  // re-register the Tauri DRAG_DROP listener, the file-open-from-cli listener,
+  // and the global keydown handler — all of which depend on `loadFile` —
+  // causing per-keystroke listener churn (and a small but real OS-level IPC
+  // round-trip for the Tauri ones).
+  const contentRef = useRef(content);
+  contentRef.current = content;
+  const originalContentRef = useRef(originalContent);
+  originalContentRef.current = originalContent;
+
   // Load file with unsaved changes protection
   const loadFile = useCallback(async (path: string) => {
-    if (content !== originalContent) {
+    if (contentRef.current !== originalContentRef.current) {
       // Has unsaved changes — ask user first
       setPendingFilePath(path);
       setShowUnsavedBeforeOpen(true);
     } else {
       await loadFileDirect(path);
     }
-  }, [content, originalContent, loadFileDirect]);
+  }, [loadFileDirect]);
 
   // New file: clears buffer. Used by handleNewFile and the dialog handlers.
   const startBlankFile = useCallback(() => {
@@ -543,65 +561,73 @@ function AppContent() {
 
   // Hide toast
   const hideToast = useCallback(() => {
-    setToast(prev => ({ ...prev, isVisible: false }));
+    // Bail out when the toast is already hidden — without this guard, a
+    // duplicate hide call (e.g. from a quick second toast cancelling the
+    // first) allocates a fresh object even though `isVisible: false` was
+    // already true, triggering a Toast re-render that schedules a fresh
+    // pair of fade/hide timers.
+    setToast(prev => prev.isVisible ? { ...prev, isVisible: false } : prev);
   }, []);
 
   // Keyboard shortcuts
+  // Keyboard shortcut handler. Mounted once on app start; reads the latest
+  // values for handlers + hasFile/content via a ref so the listener doesn't
+  // need to be removed and re-added on every keystroke (which the previous
+  // dep-array form did because `content` was listed as a dep).
+  const shortcutsRef = useRef({
+    handleOpenFile, handleSaveFile, handleSaveAs, handleNewFile,
+    handleToggleMode, handleToggleSplit, handleToggleFileExplorer, handleToggleTOC,
+    hasFile, content,
+  });
+  shortcutsRef.current = {
+    handleOpenFile, handleSaveFile, handleSaveAs, handleNewFile,
+    handleToggleMode, handleToggleSplit, handleToggleFileExplorer, handleToggleTOC,
+    hasFile, content,
+  };
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const s = shortcutsRef.current;
       // Ctrl+Shift+E - Toggle file explorer (check before Ctrl+E)
       if (e.ctrlKey && e.shiftKey && e.key === "E") {
         e.preventDefault();
-        if (hasFile) {
-          handleToggleFileExplorer();
-        }
+        if (s.hasFile) s.handleToggleFileExplorer();
         return;
       }
       // Ctrl+Shift+O - Toggle TOC (check before Ctrl+O)
       if (e.ctrlKey && e.shiftKey && e.key === "O") {
         e.preventDefault();
-        if (hasFile) {
-          handleToggleTOC();
-        }
+        if (s.hasFile) s.handleToggleTOC();
         return;
       }
       // Ctrl+O - Open file (without Shift)
       if (e.ctrlKey && !e.shiftKey && e.key === "o") {
         e.preventDefault();
-        handleOpenFile();
+        s.handleOpenFile();
       }
       // Ctrl+S - Save file
       if (e.ctrlKey && !e.shiftKey && e.key === "s") {
         e.preventDefault();
-        if (hasFile || content) {
-          handleSaveFile();
-        }
+        if (s.hasFile || s.content) s.handleSaveFile();
       }
       // Ctrl+Shift+S - Save As
       if (e.ctrlKey && e.shiftKey && (e.key === "s" || e.key === "S")) {
         e.preventDefault();
-        if (hasFile || content) {
-          handleSaveAs();
-        }
+        if (s.hasFile || s.content) s.handleSaveAs();
       }
       // Ctrl+N - New file
       if (e.ctrlKey && !e.shiftKey && e.key === "n") {
         e.preventDefault();
-        handleNewFile();
+        s.handleNewFile();
       }
       // Ctrl+E - Toggle preview/code mode (without Shift)
       if (e.ctrlKey && !e.shiftKey && e.key === "e") {
         e.preventDefault();
-        if (hasFile) {
-          handleToggleMode();
-        }
+        if (s.hasFile) s.handleToggleMode();
       }
       // Ctrl+\ - Toggle split view
       if (e.ctrlKey && !e.shiftKey && e.key === "\\") {
         e.preventDefault();
-        if (hasFile) {
-          handleToggleSplit();
-        }
+        if (s.hasFile) s.handleToggleSplit();
       }
       // ? — Show cheatsheet (only when no input is focused)
       if (e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -626,7 +652,7 @@ function AppContent() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleOpenFile, handleSaveFile, handleSaveAs, handleNewFile, handleToggleMode, handleToggleSplit, handleToggleFileExplorer, handleToggleTOC, hasFile, content]);
+  }, []);
 
   // Get export HTML from the visible preview on demand (avoids duplicate rendering)
   const getExportHtml = useCallback((): string => {
@@ -981,7 +1007,12 @@ function AppContent() {
       )}
 
       <ShortcutCheatsheet isOpen={showCheatsheet} onClose={() => setShowCheatsheet(false)} />
-      <StatsDialog isOpen={showStats} content={deferredContent} onClose={() => setShowStats(false)} />
+      {/* Stats dialog reads LIVE `content`, not the debounced version. The
+          dialog opens on a discrete user action (palette command), not while
+          typing, so the typing-fast-path argument doesn't apply — and a user
+          who opens "Show document statistics" expects the numbers to match
+          what they just typed. */}
+      <StatsDialog isOpen={showStats} content={content} onClose={() => setShowStats(false)} />
       <CommandPalette isOpen={showPalette} items={paletteItems} onClose={() => setShowPalette(false)} />
       <SettingsModal
         isOpen={showSettings}
