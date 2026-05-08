@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo, useDeferredValue } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { listen, TauriEvent } from "@tauri-apps/api/event";
@@ -55,6 +55,31 @@ const getWordCount = (text: string): number => {
   if (!text || !text.trim()) return 0;
   return text.trim().split(/\s+/).length;
 };
+
+/**
+ * Returns a value that lags behind `value` by `delay` ms. Each new `value`
+ * resets the timer, so during continuous typing the returned value is stable
+ * and only commits to the latest input once the user pauses. Used to keep the
+ * heavy markdown preview off the typing critical path without leaving the
+ * preview "stuck" the way useDeferredValue can under starvation.
+ *
+ * Implementation notes:
+ *  - All deps the effect reads are listed (`value`, `delay`). No stale-closure
+ *    surprises and no eslint-disable, so React's strict-mode dev checks don't
+ *    flag this as a "Maximum update depth exceeded" candidate.
+ *  - When `value` is already equal to `debounced`, scheduling a setTimeout
+ *    that calls setDebounced with the same value is harmless: React bails out
+ *    of the re-render via Object.is on the new state. So we skip the explicit
+ *    early-return; it isn't worth the extra dep.
+ */
+function useDebouncedValue<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const id = window.setTimeout(() => setDebounced(value), delay);
+    return () => window.clearTimeout(id);
+  }, [value, delay]);
+  return debounced;
+}
 
 function AppContent() {
   // File state
@@ -135,12 +160,14 @@ function AppContent() {
   // textarea feels laggy because React can't commit the new value until the tree
   // is reconciled.
   //
-  // useDeferredValue lets concurrent React keep the editor at 60fps. The heavy
-  // consumers (preview, TOC heading parse, palette heading scan, stats) read
-  // `deferredContent` and re-render at low priority, getting interrupted if the
-  // user types again before they finish. Editor itself still uses live `content`
-  // so what you typed appears immediately.
-  const deferredContent = useDeferredValue(content);
+  // We debounce the value passed to those heavy consumers by ~80ms — short
+  // enough to feel real-time during a normal pause between keystrokes, long
+  // enough that fast typing skips many intermediate re-renders. The editor
+  // itself still uses live `content` so the glyph you typed appears immediately.
+  // (We previously used useDeferredValue here, but under React StrictMode + the
+  // bursty state churn at file-open it could starve and leave the preview
+  // showing the empty initial value.)
+  const deferredContent = useDebouncedValue(content, 80);
 
   const lineCount = useMemo(() => content.split("\n").length, [content]);
   // Word/char counts feed the status bar — fine to lag a frame behind on huge
@@ -487,6 +514,21 @@ function AppContent() {
 // Handle content change
   const handleContentChange = useCallback((newContent: string) => {
     setContent(newContent);
+  }, []);
+
+  // Stable cursor + preview-line setters. Critical that these are useCallback
+  // (not inline arrows): CodeEditor wires `onCursorChange` into a useEffect via
+  // `updateCursorPosition`, and an unstable callback ref would re-run that
+  // effect on every parent render, calling `updateCursorPosition()` again,
+  // which itself calls `setCursorPosition({ line, col })` with a fresh object
+  // — fresh object refs bypass React's bail-out and feed the cycle.
+  // The functional-update form bails out (returns the previous state) when the
+  // values haven't actually changed, breaking the loop on idle re-renders.
+  const handleCursorChange = useCallback((line: number, col: number) => {
+    setCursorPosition((prev) => (prev.line === line && prev.col === col ? prev : { line, col }));
+  }, []);
+  const handlePreviewLineChange = useCallback((line: number) => {
+    setPreviewLine((prev) => (prev === line ? prev : line));
   }, []);
 
   // Handle image paste success
@@ -843,7 +885,7 @@ function AppContent() {
               <CodeEditor
                 content={content}
                 onChange={handleContentChange}
-                onCursorChange={(line, col) => setCursorPosition({ line, col })}
+                onCursorChange={handleCursorChange}
                 onImagePaste={handleImagePaste}
                 onError={handleError}
                 filePath={filePath}
@@ -877,7 +919,7 @@ function AppContent() {
                 lineCount={lineCount}
                 fileSize={fileSize}
                 onEditClick={handleToggleMode}
-                onLineChange={(line) => setPreviewLine(line)}
+                onLineChange={handlePreviewLineChange}
                 filePath={filePath}
                 markdownBodyRef={previewRef}
                 onContentChange={handleContentChange}
