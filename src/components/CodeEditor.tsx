@@ -472,6 +472,14 @@ function CodeEditorImpl({ content, onChange, onCursorChange, onSelectionChange, 
         // else: let default paste handle plain text
     }, [content, onChange, onImagePaste, onError, filePath, applyResult]);
 
+    // Last-reported cursor state. Lets us short-circuit the work in
+    // updateCursorPosition when nothing has actually changed — without this
+    // we'd run the substring-and-split routine twice per keystroke
+    // (selectionchange and keyup both fire) and even though the downstream
+    // setStates bail out via Object.is, the substring/split itself is real
+    // work that adds up on huge docs.
+    const lastCursorRef = useRef({ line: -1, col: -1, start: -1, end: -1 });
+
     // Calculate cursor position (line and column) and active line for highlight
     const updateCursorPosition = useCallback(() => {
         if (!textareaRef.current) return;
@@ -479,11 +487,20 @@ function CodeEditorImpl({ content, onChange, onCursorChange, onSelectionChange, 
         const textarea = textareaRef.current;
         const cursorPos = textarea.selectionStart;
         const selEnd = textarea.selectionEnd;
+
+        // Cheap pre-check: if the raw selection range hasn't moved since the
+        // last time we ran, skip the line/col recompute entirely. This is the
+        // common case during typing — input event already fired, caret moved,
+        // selectionchange + keyup both fire, second call sees the same range.
+        const last = lastCursorRef.current;
+        if (cursorPos === last.start && selEnd === last.end) return;
+
         const textBeforeCursor = textarea.value.substring(0, cursorPos);
         const linesBeforeCursor = textBeforeCursor.split("\n");
         const line = linesBeforeCursor.length;
         const column = linesBeforeCursor[linesBeforeCursor.length - 1].length + 1;
 
+        lastCursorRef.current = { line, col: column, start: cursorPos, end: selEnd };
         setActiveLine(line);
         onCursorChange?.(line, column);
         onSelectionChange?.(cursorPos, selEnd);
