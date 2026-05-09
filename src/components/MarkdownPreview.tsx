@@ -10,8 +10,9 @@ import { MermaidBlock, isMermaidLanguage } from "./MermaidBlock";
 
 // Detect KaTeX-style math so we only load the heavy katex bundle when needed.
 // $$...$$ for block math, $...$ for inline math (not preceded/followed by digit
-// to avoid false positives like "$5 and $10").
-const MATH_DETECTION_REGEX = /(\$\$[\s\S]+?\$\$)|((?:^|[^\d$])\$[^\s$][^\n$]*?[^\s$]\$(?!\d))/m;
+// to avoid false positives like "$5 and $10"). Also matches chemistry blocks
+// written as \ce{...} / \pu{...} so people can use mhchem without explicit $$.
+const MATH_DETECTION_REGEX = /(\$\$[\s\S]+?\$\$)|((?:^|[^\d$])\$[^\s$][^\n$]*?[^\s$]\$(?!\d))|(\\ce\{)|(\\pu\{)/m;
 const hasMath = (s: string): boolean => MATH_DETECTION_REGEX.test(s);
 
 type PluginPair = { remark: unknown; rehype: unknown };
@@ -21,10 +22,15 @@ let mathLoadPromise: Promise<PluginPair> | null = null;
 const loadMathPlugins = (): Promise<PluginPair> => {
     if (mathPluginsCache) return Promise.resolve(mathPluginsCache);
     if (mathLoadPromise) return mathLoadPromise;
+    // Load mhchem alongside KaTeX so chemistry notation like
+    //   $\ce{2 Fe^x_{Fe} + O^x_{O} -> 2 Fe'_{Fe} + V_{O}^{**} + 1/2 O2 ^}$
+    // renders properly in standard book-style typography. mhchem patches
+    // KaTeX's macro table on import, so it must load before the first render.
     mathLoadPromise = Promise.all([
         import("remark-math"),
         import("rehype-katex"),
         import("katex/dist/katex.min.css"),
+        import("katex/dist/contrib/mhchem.mjs"),
     ]).then(([rm, rk]) => {
         mathPluginsCache = { remark: rm.default, rehype: rk.default };
         return mathPluginsCache;

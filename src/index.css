@@ -699,6 +699,51 @@ select:focus-visible,
   font-weight: 600;
 }
 
+/* ===== Math (KaTeX) — book-style typography =====
+   KaTeX ships its own font stack, so we don't override font-family.
+   We DO style the surrounding block math: center it, give it breathing
+   room above/below the paragraph, and let long equations scroll on
+   narrow viewports instead of overflowing the column. */
+.markdown-body .katex {
+  font-size: 1.05em;
+  color: var(--text-primary);
+}
+
+.markdown-body .katex-display {
+  margin: 1.25rem 0;
+  padding: 0.25rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Prefer centered display equations like a printed textbook */
+  text-align: center;
+}
+
+/* Inline math should sit on the prose baseline without inheriting
+   border/background from the global `code` styles. rehype-katex emits
+   <span class="katex"> only, but mhchem can briefly produce nested
+   <code> nodes during parsing — strip the outline so chemistry blocks
+   render cleanly. */
+.markdown-body .katex,
+.markdown-body .katex * {
+  background: transparent;
+  border: 0;
+}
+
+/* Equation numbering (\tag{}) and small labels: keep the muted tone
+   consistent with the rest of the doc rather than KaTeX's default black. */
+.markdown-body .katex .tag {
+  color: var(--text-secondary);
+}
+
+/* On narrow screens, equations may exceed column width. KaTeX wraps the
+   math in <span class="katex-display"><span class="katex">...</span></span>;
+   the inner element controls width, so we constrain the outer scroller. */
+.markdown-body .katex-display > .katex {
+  display: inline-block;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
 /* ===== Syntax Highlighting (code blocks) ===== */
 .hljs {
   background: transparent;
