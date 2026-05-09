@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Security
+
+- `read_file` / `save_file` refuse documents above 50 MB. Stat happens before
+  the read so an oversized file fails fast with a clear "File too large"
+  toast instead of pulling hundreds of MB of UTF-8 into the webview while
+  the UI freezes.
+- `save_image` refuses payloads above 25 MB and now enforces an extension
+  whitelist (`png`, `jpg`, `jpeg`, `gif`, `webp`, `bmp`, `svg`,
+  case-insensitive). A caller can no longer drop a `.exe` / `.dll` / `.lnk`
+  into the user's documents folder under cover of the markdown image-paste
+  flow. Tests cover the new rejections plus all whitelisted extensions.
+- AI requests get a 60 s wall-clock timeout (composed with the user's
+  existing `AbortController`) and the response is capped at 200 KB. A
+  stuck local llama.cpp or a runaway model can no longer hang the AI
+  bubble forever or paste megabytes of text into the editor.
+- Tauri CSP further tightened: `object-src 'none'`, `base-uri 'self'`,
+  `form-action 'none'`, `frame-ancestors 'none'`. Asset protocol disabled
+  (it was scoped to `**` but the app loads images via plugin-fs + blob
+  URLs and never touches `asset:`), and `asset:`/`https://asset.localhost`
+  dropped from `default-src` and `img-src`.
+
+### Added
+
+- Status bar shows a "selected / total" word count when the editor has a
+  non-empty selection; reverts to total when the selection collapses.
+- Welcome screen: a Settings button next to Open/New, a "Clear all" link in
+  the Recent header, and a visible drag highlight (dashed accent outline +
+  hover background) so the drop target is obvious.
+
+### Fixed — UX
+
+- File-operation errors now surface the actual message from Rust
+  ("File too large", "Image filename must end in …") instead of the
+  generic "Failed to open file" / "Failed to save image. Please try again."
+  toasts. Restore-on-launch surfaces TooLarge specifically so a user whose
+  yesterday-doc grew above the cap gets an explanation instead of the
+  editor silently opening to a blank welcome screen.
+- Welcome screen: per-row Remove button on a Recent file used to be a
+  `<span role="button">` nested inside the row's `<button>`. That's invalid
+  HTML and could double-fire — clicking Remove sometimes also reopened the
+  file. Split into two sibling buttons.
+
+### Removed
+
+- Dead `localStorage` helpers `getFocusMode` / `setFocusMode` /
+  `getAutoSave` / `setAutoSave`. Both features were retired in 0.6.1 and
+  nothing reads these keys anymore.
+
 ### Changed — Offline support
 
 - All UI fonts (Inter, JetBrains Mono, Merriweather, Lora, Source Serif 4,
