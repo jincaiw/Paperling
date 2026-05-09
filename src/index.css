@@ -376,6 +376,33 @@ select:focus-visible,
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 }
 
+/* ===== Editor overlay scrollbar reservation =====
+   The CodeEditor stacks a transparent <textarea> on top of a styled highlight
+   overlay. They MUST agree on content width or word-wrap fires at different
+   columns and the caret drifts off the rendered glyph after scrolling.
+   `scrollbar-gutter: stable` keeps a fixed-width gutter in both layers
+   regardless of whether the scrollbar is currently shown, eliminating the
+   reflow that used to mis-align the two when content grew past the viewport.
+
+   The highlight layer should never *show* its own scrollbar — the textarea
+   owns the visible one. We hide it by making the scrollbar track + thumb
+   transparent and unclickable. This works with `pointer-events: none` on the
+   parent (so the user never tries to scroll it directly anyway). */
+.editor-overlay-scrollbar-hidden::-webkit-scrollbar-thumb,
+.editor-overlay-scrollbar-hidden::-webkit-scrollbar-track,
+.editor-overlay-scrollbar-hidden::-webkit-scrollbar-corner {
+  background: transparent;
+  border: 0;
+}
+
+.editor-overlay-scrollbar-hidden::-webkit-scrollbar-thumb:hover {
+  background: transparent;
+}
+
+.editor-overlay-scrollbar-hidden {
+  scrollbar-color: transparent transparent;
+}
+
 /* ===== Blinking Cursor Animation ===== */
 @keyframes blink {
 

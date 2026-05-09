@@ -69,6 +69,15 @@ const sharedTextStyle: React.CSSProperties = {
     wordBreak: "normal",
     overflowWrap: "normal",
     boxSizing: "border-box",
+    // Reserve a fixed-width scrollbar gutter on both layers regardless of
+    // whether the scrollbar is currently shown. Without this, the textarea's
+    // scrollbar appears once content overflows vertically and silently
+    // narrows the content area by ~10px — but the highlight overlay (which
+    // has no scrollbar) keeps its full width. The two layers then wrap text
+    // at different columns, and after a couple of wrapped lines the caret
+    // visibly drifts off the rendered glyph. Reserving the gutter keeps
+    // both layers' content widths identical.
+    scrollbarGutter: "stable",
 };
 
 // Line-number gutter. Extracted + memoized so typing within a single line
@@ -840,7 +849,15 @@ export function CodeEditor({ content, onChange, onCursorChange, onSelectionChang
                     since its fixed Y assumes uniform line heights. */}
                 <div
                     ref={highlightRef}
-                    className="absolute inset-0 text-[var(--text-primary)] pointer-events-none overflow-hidden"
+                    // overflow:auto (instead of hidden) so the `scrollbar-gutter:
+                    // stable` rule in sharedTextStyle takes effect — that gutter
+                    // is what keeps wrap columns identical between this layer
+                    // and the textarea. The scrollbar itself stays invisible
+                    // (see .editor-overlay-scrollbar-hidden in index.css), and
+                    // pointer-events:none means the user never interacts with
+                    // it directly anyway. Vertical scroll position is driven
+                    // imperatively by the rAF sync below.
+                    className="absolute inset-0 text-[var(--text-primary)] pointer-events-none overflow-auto editor-overlay-scrollbar-hidden"
                     aria-hidden="true"
                     style={{ ...sharedTextStyle, ...wrapStyle }}
                 >
