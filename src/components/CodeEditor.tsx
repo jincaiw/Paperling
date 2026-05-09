@@ -80,6 +80,79 @@ const sharedTextStyle: React.CSSProperties = {
     scrollbarGutter: "stable",
 };
 
+// Stable per-line wrapper styles. Hoisting these out of the render path means
+// every <div> in the highlight overlay receives the SAME style ref across
+// renders, so React's prop diff is a single ref check instead of an iteration
+// over the keys of a freshly-allocated style object. With 5k+ lines the
+// difference is measurable on each keystroke.
+const HIGHLIGHT_LINE_STYLE_FIXED: React.CSSProperties = {
+    height: `${EDITOR_LINE_HEIGHT}px`,
+    lineHeight: `${EDITOR_LINE_HEIGHT}px`,
+    position: "relative",
+};
+const HIGHLIGHT_LINE_STYLE_WRAP: React.CSSProperties = {
+    minHeight: `${EDITOR_LINE_HEIGHT}px`,
+    lineHeight: `${EDITOR_LINE_HEIGHT}px`,
+    position: "relative",
+};
+
+// Renders every line — used for small docs and word-wrap mode. Memoized so
+// React skips reconciliation entirely when the `lines` ref hasn't changed
+// (the per-line cache in CodeEditor preserves array refs for unchanged lines,
+// but React still walks children unless the parent itself short-circuits).
+const RenderedLines = memo(function RenderedLines({
+    lines,
+    wordWrap,
+}: {
+    lines: React.ReactNode[];
+    wordWrap: boolean;
+}) {
+    const lineStyle = wordWrap ? HIGHLIGHT_LINE_STYLE_WRAP : HIGHLIGHT_LINE_STYLE_FIXED;
+    return (
+        <>
+            {lines.map((node, i) => (
+                <div key={i} style={lineStyle}>
+                    {node}
+                </div>
+            ))}
+        </>
+    );
+});
+
+// Renders only the slice [firstVisible, lastVisible) of the doc, with
+// fixed-height spacers above and below to preserve the textarea/overlay
+// scroll-height parity (caret-glyph alignment depends on it). Only valid
+// when wordWrap is OFF — variable line heights would break the geometry.
+const VirtualizedHighlight = memo(function VirtualizedHighlight({
+    lines,
+    firstVisible,
+    lastVisible,
+}: {
+    lines: React.ReactNode[];
+    firstVisible: number;
+    lastVisible: number;
+}) {
+    const total = lines.length;
+    const slice: React.ReactNode[] = [];
+    const end = Math.min(lastVisible, total);
+    for (let i = firstVisible; i < end; i++) {
+        slice.push(
+            <div key={i} style={HIGHLIGHT_LINE_STYLE_FIXED}>
+                {lines[i]}
+            </div>
+        );
+    }
+    const topSpacer = firstVisible * EDITOR_LINE_HEIGHT;
+    const bottomSpacer = Math.max(0, total - end) * EDITOR_LINE_HEIGHT;
+    return (
+        <>
+            {topSpacer > 0 && <div aria-hidden style={{ height: `${topSpacer}px` }} />}
+            {slice}
+            {bottomSpacer > 0 && <div aria-hidden style={{ height: `${bottomSpacer}px` }} />}
+        </>
+    );
+});
+
 // Line-number gutter. Extracted + memoized so typing within a single line
 // (lineCount unchanged, activeLine unchanged) doesn't cause React to reconcile
 // thousands of <div>s on every keystroke. Only re-renders when the visible line
@@ -443,6 +516,11 @@ export function CodeEditor({ content, onChange, onCursorChange, onSelectionChang
         };
     }, [updateCursorPosition]);
 
+    // Indirection ref so the rAF sync below can call the latest
+    // recomputeVisible without re-installing the rAF loop on every render.
+    // Assigned just below where recomputeVisible is declared.
+    const recomputeVisibleRef = useRef<() => void>(() => { });
+
     // Use rAF-based scroll sync for sub-frame accuracy. The native scroll event
     // can lag the caret by 1 frame; rAF lets us catch up before paint.
     useEffect(() => {
@@ -469,9 +547,15 @@ export function CodeEditor({ content, onChange, onCursorChange, onSelectionChang
                 if (gutterRef.current) {
                     gutterRef.current.scrollTop = top;
                 }
-                if (top !== lastTop && onScrollFraction) {
-                    const max = t.scrollHeight - t.clientHeight;
-                    onScrollFraction(max > 0 ? top / max : 0);
+                if (top !== lastTop) {
+                    if (onScrollFraction) {
+                        const max = t.scrollHeight - t.clientHeight;
+                        onScrollFraction(max > 0 ? top / max : 0);
+                    }
+                    // Re-evaluate the virtualization window on real vertical
+                    // motion. The hysteresis inside guarantees we only call
+                    // setState when the window has actually moved.
+                    recomputeVisibleRef.current();
                 }
                 lastTop = top;
                 lastLeft = left;
@@ -547,6 +631,89 @@ export function CodeEditor({ content, onChange, onCursorChange, onSelectionChang
         }
         return out;
     }, [lines]);
+
+    // Virtualization for the highlight overlay.
+    //
+    // Without this, a 10k-line file mounts 10k <div> nodes in the highlight
+    // layer; every keystroke makes React's reconciler walk all of them even
+    // though the per-line node refs are cached and equal. That walk is what
+    // makes typing feel "sticky" on large markdown files.
+    //
+    // We only render the lines currently visible in the viewport, plus a
+    // generous buffer so scrolling never reveals an un-rendered gap before
+    // the next recompute fires. The total scroll height is preserved with
+    // top/bottom spacer divs so the textarea's and overlay's scroll
+    // geometry stay identical (caret-glyph alignment depends on it).
+    //
+    // Word-wrap mode opts out: line heights vary with content there, so we
+    // can't compute slot positions without measurement. The cap on
+    // `RENDER_ALL_THRESHOLD` keeps small/medium docs unchanged regardless,
+    // because virtualization adds a (tiny) per-scroll cost of its own.
+    const VIRTUALIZE_BUFFER = 40;
+    const RENDER_ALL_THRESHOLD = 400;
+    const shouldVirtualize = !wordWrap && lineCount > RENDER_ALL_THRESHOLD;
+    const [visibleRange, setVisibleRange] = useState({ first: 0, last: 0 });
+    const visibleRangeRef = useRef(visibleRange);
+    visibleRangeRef.current = visibleRange;
+
+    const recomputeVisible = useCallback(() => {
+        if (!shouldVirtualize) return;
+        const t = textareaRef.current;
+        if (!t) return;
+        const top = t.scrollTop;
+        const height = t.clientHeight;
+        const first = Math.max(
+            0,
+            Math.floor((top - EDITOR_PADDING) / EDITOR_LINE_HEIGHT) - VIRTUALIZE_BUFFER
+        );
+        const last = Math.min(
+            lineCount,
+            Math.ceil((top + height - EDITOR_PADDING) / EDITOR_LINE_HEIGHT) + VIRTUALIZE_BUFFER
+        );
+        const cur = visibleRangeRef.current;
+        // Hysteresis: only update when the window has shifted enough that a
+        // re-render is genuinely needed. Prevents setState thrash during
+        // smooth scrolling.
+        const halfBuf = VIRTUALIZE_BUFFER / 2;
+        if (Math.abs(first - cur.first) >= halfBuf || Math.abs(last - cur.last) >= halfBuf) {
+            setVisibleRange({ first, last });
+        }
+    }, [shouldVirtualize, lineCount]);
+
+    // Keep the ref pointed at the latest recomputeVisible so the rAF sync
+    // (which depends only on onScrollFraction) doesn't tear down + rebuild
+    // every time lineCount or shouldVirtualize changes.
+    recomputeVisibleRef.current = recomputeVisible;
+
+    // Initialize / reset the visible window when virtualization toggles or the
+    // doc is replaced wholesale (file open, big paste). Without this the
+    // initial state {first:0, last:0} would render zero lines on first paint.
+    useEffect(() => {
+        if (!shouldVirtualize) {
+            // Make sure the next switch back into virtualization re-seeds.
+            if (visibleRangeRef.current.last !== 0) {
+                setVisibleRange({ first: 0, last: 0 });
+            }
+            return;
+        }
+        const t = textareaRef.current;
+        if (!t) return;
+        const top = t.scrollTop;
+        const height = t.clientHeight || 600;
+        const first = Math.max(
+            0,
+            Math.floor((top - EDITOR_PADDING) / EDITOR_LINE_HEIGHT) - VIRTUALIZE_BUFFER
+        );
+        const last = Math.min(
+            lineCount,
+            Math.ceil((top + height - EDITOR_PADDING) / EDITOR_LINE_HEIGHT) + VIRTUALIZE_BUFFER
+        );
+        setVisibleRange({ first, last });
+    }, [shouldVirtualize, lineCount]);
+
+    // Hook recomputeVisible into scroll. We piggyback on the existing rAF in
+    // the next effect (it already runs on every frame while there's scroll
+    // motion); no extra event listener needed.
 
     // Typewriter mode: keep the active line vertically centered as the caret moves.
     useEffect(() => {
@@ -872,22 +1039,15 @@ export function CodeEditor({ content, onChange, onCursorChange, onSelectionChang
                             }}
                         />
                     )}
-                    {highlightedLines.map((highlighted, i) => {
-                        const lineSizing: React.CSSProperties = wordWrap
-                            ? { minHeight: `${EDITOR_LINE_HEIGHT}px`, lineHeight: `${EDITOR_LINE_HEIGHT}px` }
-                            : { height: `${EDITOR_LINE_HEIGHT}px`, lineHeight: `${EDITOR_LINE_HEIGHT}px` };
-                        return (
-                            <div
-                                key={i}
-                                style={{
-                                    ...lineSizing,
-                                    position: "relative",
-                                }}
-                            >
-                                {highlighted}
-                            </div>
-                        );
-                    })}
+                    {shouldVirtualize ? (
+                        <VirtualizedHighlight
+                            lines={highlightedLines}
+                            firstVisible={visibleRange.first}
+                            lastVisible={visibleRange.last}
+                        />
+                    ) : (
+                        <RenderedLines lines={highlightedLines} wordWrap={wordWrap} />
+                    )}
                 </div>
 
                 <FindReplaceBar
