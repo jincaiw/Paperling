@@ -10,6 +10,11 @@ interface StatusBarProps {
     wordCount?: number;
     charCount?: number;
     readingTimeMin?: number;
+    /** Character count of the active selection (0 = no selection). */
+    selectionLength?: number;
+    /** Word count inside the active selection. Only meaningful when
+     *  `selectionLength > 0`. */
+    selectionWordCount?: number;
 }
 
 const formatReadingTime = (min: number): string => {
@@ -32,7 +37,10 @@ export function StatusBar({
     wordCount,
     charCount,
     readingTimeMin,
+    selectionLength = 0,
+    selectionWordCount = 0,
 }: StatusBarProps) {
+    const hasSelection = selectionLength > 0;
     return (
         <footer
             role="status"
@@ -88,11 +96,17 @@ export function StatusBar({
                 )}
                 {wordCount !== undefined && (
                     <div
-                        className="flex items-center gap-1 hover:text-[var(--text-primary)] cursor-default transition-colors"
-                        title={charCount !== undefined ? `${charCount.toLocaleString()} characters` : undefined}
+                        className={`flex items-center gap-1 cursor-default transition-colors ${hasSelection ? "text-[var(--accent)]" : "hover:text-[var(--text-primary)]"}`}
+                        title={
+                            hasSelection
+                                ? `Selection: ${selectionWordCount.toLocaleString()} words, ${selectionLength.toLocaleString()} characters`
+                                : (charCount !== undefined ? `${charCount.toLocaleString()} characters` : undefined)
+                        }
                     >
                         <span className="material-symbols-outlined text-[14px] opacity-70">text_fields</span>
-                        {wordCount.toLocaleString()} words
+                        {hasSelection
+                            ? `${selectionWordCount.toLocaleString()} / ${wordCount.toLocaleString()} words`
+                            : `${wordCount.toLocaleString()} words`}
                     </div>
                 )}
                 {readingTimeMin !== undefined && readingTimeMin > 0 && (

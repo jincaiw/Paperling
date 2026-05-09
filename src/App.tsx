@@ -102,6 +102,9 @@ function AppContent() {
   const [wordWrapEnabled, setWordWrapEnabled] = useState<boolean>(() => getWordWrap());
   const [spellCheckEnabled, setSpellCheckEnabled] = useState<boolean>(() => getSpellCheck());
   const [cursorPosition, setCursorPosition] = useState({ line: 1, col: 1 });
+  // Editor selection range. Collapsed (start === end) means no selection;
+  // when start < end we surface a "N words selected" chip in the status bar.
+  const [selectionRange, setSelectionRange] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
   const [isLoading, setIsLoading] = useState(false);
 
   // Pending file to open after unsaved changes dialog
@@ -174,6 +177,15 @@ function AppContent() {
   // docs, so they read deferred too.
   const wordCount = useMemo(() => getWordCount(deferredContent), [deferredContent]);
   const charCount = deferredContent.length;
+  // Selection word count, when the user has a non-empty range highlighted.
+  // Reads LIVE `content` (not deferredContent) since the selection range and
+  // the underlying text must agree — sliding by 80ms would briefly count words
+  // from a stale buffer right after a fast edit. The slice is cheap regardless.
+  const selectionLength = selectionRange.end - selectionRange.start;
+  const selectionWordCount = useMemo(
+    () => (selectionLength > 0 ? getWordCount(content.slice(selectionRange.start, selectionRange.end)) : 0),
+    [content, selectionRange.start, selectionRange.end, selectionLength]
+  );
   // Average adult reading speed for prose: ~200 wpm.
   const readingTimeMin = useMemo(() => wordCount / 200, [wordCount]);
 
@@ -197,7 +209,11 @@ function AppContent() {
       setLastFile(fileData.path);
     } catch (err) {
       console.error("Failed to load file:", err);
-      showToast("Failed to open file", "error");
+      // Surface the actual error from Rust so "File too large" / "File not
+      // found" reaches the user instead of a generic message — without this,
+      // hitting the new 50 MB cap looked exactly like a permission error.
+      const msg = typeof err === "string" ? err : (err as { message?: string })?.message;
+      showToast(msg || "Failed to open file", "error");
     } finally {
       setIsLoading(false);
     }
@@ -242,7 +258,9 @@ function AppContent() {
     // Restore last opened file once on app launch
     const last = getLastFile();
     if (last) {
-      // Fire-and-forget; failures are silent (file may have been moved/deleted)
+      // Fire-and-forget; failures are mostly silent (file may have been moved
+      // / deleted), but we DO surface a toast for the new TooLarge case so a
+      // user who suddenly can't reopen yesterday's file isn't left guessing.
       invoke<FileData>("read_file", { path: last })
         .then((fileData) => {
           setFilePath(fileData.path);
@@ -256,8 +274,12 @@ function AppContent() {
           // screen show "3d ago" for the file you'd just been editing.
           addRecentFile(fileData.path, fileData.name);
         })
-        .catch(() => {
+        .catch((err) => {
           setLastFile(null);
+          const msg = typeof err === "string" ? err : (err as { message?: string })?.message || "";
+          if (/too large/i.test(msg)) {
+            showToast(`Could not restore last file: ${msg}`, "error");
+          }
         });
     }
     // Run only once on mount
@@ -308,7 +330,8 @@ function AppContent() {
         setOriginalContent(content);
       } catch (err) {
         console.error("Failed to save file:", err);
-        showToast("Failed to save file", "error");
+        const msg = typeof err === "string" ? err : (err as { message?: string })?.message;
+        showToast(msg || "Failed to save file", "error");
         return;
       }
     }
@@ -450,7 +473,8 @@ function AppContent() {
       showToast("File saved", "success");
     } catch (err) {
       console.error("Failed to save file:", err);
-      showToast("Failed to save file", "error");
+      const msg = typeof err === "string" ? err : (err as { message?: string })?.message;
+      showToast(msg || "Failed to save file", "error");
     }
   }, [content, fileName, showToast]);
 
@@ -466,7 +490,8 @@ function AppContent() {
       showToast("File saved", "success");
     } catch (err) {
       console.error("Failed to save file:", err);
-      showToast("Failed to save file", "error");
+      const msg = typeof err === "string" ? err : (err as { message?: string })?.message;
+      showToast(msg || "Failed to save file", "error");
     }
   }, [filePath, content, showToast, handleSaveAs]);
 
@@ -544,6 +569,13 @@ function AppContent() {
   // values haven't actually changed, breaking the loop on idle re-renders.
   const handleCursorChange = useCallback((line: number, col: number) => {
     setCursorPosition((prev) => (prev.line === line && prev.col === col ? prev : { line, col }));
+  }, []);
+  // Bail out via functional update when the range hasn't actually changed —
+  // selectionchange fires constantly while typing even when caret is at the
+  // same offset, and we don't want to mint a fresh `{ start, end }` object
+  // (and trigger a status-bar re-render) on every keystroke.
+  const handleSelectionChange = useCallback((start: number, end: number) => {
+    setSelectionRange((prev) => (prev.start === start && prev.end === end ? prev : { start, end }));
   }, []);
   const handlePreviewLineChange = useCallback((line: number) => {
     setPreviewLine((prev) => (prev === line ? prev : line));
@@ -890,7 +922,13 @@ function AppContent() {
       />
 
       {!hasFile ? (
-        <WelcomeScreen onOpenFile={handleOpenFile} onNewFile={handleNewFile} onFileDrop={handleFileDrop} onOpenRecent={loadFile} />
+        <WelcomeScreen
+          onOpenFile={handleOpenFile}
+          onNewFile={handleNewFile}
+          onOpenSettings={() => setShowSettings(true)}
+          onFileDrop={handleFileDrop}
+          onOpenRecent={loadFile}
+        />
       ) : (
         <>
           {/* Split-aware layout. Both views always mounted; CSS toggles their display
@@ -912,6 +950,7 @@ function AppContent() {
                 content={content}
                 onChange={handleContentChange}
                 onCursorChange={handleCursorChange}
+                onSelectionChange={handleSelectionChange}
                 onImagePaste={handleImagePaste}
                 onError={handleError}
                 filePath={filePath}
@@ -984,6 +1023,8 @@ function AppContent() {
             wordCount={wordCount}
             charCount={charCount}
             readingTimeMin={readingTimeMin}
+            selectionLength={mode !== "preview" ? selectionLength : 0}
+            selectionWordCount={selectionWordCount}
           />
         </>
       )}

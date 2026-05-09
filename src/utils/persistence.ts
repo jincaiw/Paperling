@@ -62,17 +62,10 @@ export const getSplitRatio = (): number => {
 };
 export const setSplitRatio = (r: number): void => safeSet(KEY_SPLIT_RATIO, r);
 
-const KEY_AUTOSAVE = "marklite:autoSave";
-export const getAutoSave = (): boolean => safeGet<boolean>(KEY_AUTOSAVE, false);
-export const setAutoSave = (v: boolean): void => safeSet(KEY_AUTOSAVE, v);
-
-const KEY_FOCUS_MODE = "marklite:focusMode";
 const KEY_TYPEWRITER_MODE = "marklite:typewriterMode";
 const KEY_TOOLBAR = "marklite:toolbar";
 const KEY_WORD_WRAP = "marklite:wordWrap";
 const KEY_SPELL_CHECK = "marklite:spellCheck";
-export const getFocusMode = (): boolean => safeGet<boolean>(KEY_FOCUS_MODE, false);
-export const setFocusMode = (v: boolean): void => safeSet(KEY_FOCUS_MODE, v);
 export const getTypewriterMode = (): boolean => safeGet<boolean>(KEY_TYPEWRITER_MODE, false);
 export const setTypewriterMode = (v: boolean): void => safeSet(KEY_TYPEWRITER_MODE, v);
 export const getToolbarEnabled = (): boolean => safeGet<boolean>(KEY_TOOLBAR, false);
