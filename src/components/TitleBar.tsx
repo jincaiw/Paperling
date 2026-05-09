@@ -1,8 +1,14 @@
-import { useState } from "react";
+import { useState, lazy, Suspense, memo } from "react";
 import { Window } from "@tauri-apps/api/window";
 import { SettingsMenu } from "./SettingsMenu";
 import { ExportMenu } from "./ExportMenu";
-import { UnsavedChangesDialog } from "./UnsavedChangesDialog";
+
+// Loaded only when the user actually tries to close a dirty buffer.
+// Eager-importing this kept its module (and its chained imports) in the
+// main bundle even though most sessions never trigger the dialog.
+const UnsavedChangesDialog = lazy(() =>
+    import("./UnsavedChangesDialog").then((m) => ({ default: m.UnsavedChangesDialog }))
+);
 
 interface TitleBarProps {
     fileName?: string;
@@ -16,7 +22,7 @@ interface TitleBarProps {
     onExportError?: (format: string) => void;
 }
 
-export function TitleBar({ fileName, isDirty, filePath, onOpenFile, onNewFile, onSaveFile, getExportHtml, onExportSuccess, onExportError }: TitleBarProps) {
+function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, onSaveFile, getExportHtml, onExportSuccess, onExportError }: TitleBarProps) {
     const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
 
     const handleMinimize = async () => {
@@ -81,12 +87,16 @@ export function TitleBar({ fileName, isDirty, filePath, onOpenFile, onNewFile, o
 
     return (
         <>
-            <UnsavedChangesDialog
-                isOpen={showUnsavedDialog}
-                onClose={() => setShowUnsavedDialog(false)}
-                onDiscard={handleDiscardAndClose}
-                onSave={handleSaveAndClose}
-            />
+            {showUnsavedDialog && (
+                <Suspense fallback={null}>
+                    <UnsavedChangesDialog
+                        isOpen={showUnsavedDialog}
+                        onClose={() => setShowUnsavedDialog(false)}
+                        onDiscard={handleDiscardAndClose}
+                        onSave={handleSaveAndClose}
+                    />
+                </Suspense>
+            )}
             <header className="h-12 shrink-0 flex items-center justify-between px-4 bg-[var(--bg-titlebar)] border-b border-[var(--border)] no-select drag-region transition-colors">
                 {/* Left: Icon & Title */}
                 <div className="flex items-center gap-3 no-drag">
@@ -174,3 +184,10 @@ export function TitleBar({ fileName, isDirty, filePath, onOpenFile, onNewFile, o
         </>
     );
 }
+
+// React.memo + useCallback'd parent props means the TitleBar skips re-render
+// while the user is typing. Without this every keystroke reconciled the
+// header — cheap individually, but it adds up on hot paths. The default
+// shallow prop comparison is enough; all props are primitives or stable
+// callbacks from App.
+export const TitleBar = memo(TitleBarImpl);

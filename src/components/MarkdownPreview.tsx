@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, useMemo, useState } from "react";
+import { useRef, useEffect, useCallback, useMemo, useState, memo } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -41,7 +41,6 @@ const loadMathPlugins = (): Promise<PluginPair> => {
 interface MarkdownPreviewProps {
     content: string;
     fileName: string;
-    lineCount: number;
     fileSize: number;
     onEditClick: () => void;
     onLineChange?: (line: number) => void;
@@ -443,9 +442,8 @@ function HeadingWithAnchor(
     }
 }
 
-export function MarkdownPreview({
+function MarkdownPreviewImpl({
     content,
-    lineCount,
     onLineChange,
     filePath,
     markdownBodyRef,
@@ -456,6 +454,13 @@ export function MarkdownPreview({
 }: MarkdownPreviewProps) {
     const mainRef = useRef<HTMLElement>(null);
     const [zoomImage, setZoomImage] = useState<{ src: string; alt: string } | null>(null);
+
+    // lineCount is derived here (instead of being passed as a prop) so the
+    // preview's split happens once, against the same `content` we render.
+    // App used to compute this from live content and pass it down, which
+    // double-scanned the document on every keystroke and reported the wrong
+    // count for the (debounced) snapshot we're actually rendering.
+    const lineCount = useMemo(() => content.split("\n").length, [content]);
 
     // Listen for zoom requests from LocalImage clicks
     useEffect(() => {
@@ -770,3 +775,12 @@ export function MarkdownPreview({
         </>
     );
 }
+
+// React.memo so we skip the heavy markdown re-parse + reconcile when only
+// the editor cursor moved or selection changed. App re-renders on every
+// keystroke (live `content` state); without memo, that re-render flowed
+// straight through and called react-markdown again with the same input.
+// All inputs to MarkdownPreview are either stable (callbacks via useCallback,
+// filePath/fileName) or genuine work triggers (debounced content) — the
+// default shallow prop comparator is exactly what we want.
+export const MarkdownPreview = memo(MarkdownPreviewImpl);
