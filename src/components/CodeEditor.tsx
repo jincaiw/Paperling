@@ -472,6 +472,14 @@ function CodeEditorImpl({ content, onChange, onCursorChange, onSelectionChange, 
         // else: let default paste handle plain text
     }, [content, onChange, onImagePaste, onError, filePath, applyResult]);
 
+    // Last-reported cursor state. Lets us short-circuit the work in
+    // updateCursorPosition when nothing has actually changed — without this
+    // we'd run the substring-and-split routine twice per keystroke
+    // (selectionchange and keyup both fire) and even though the downstream
+    // setStates bail out via Object.is, the substring/split itself is real
+    // work that adds up on huge docs.
+    const lastCursorRef = useRef({ line: -1, col: -1, start: -1, end: -1 });
+
     // Calculate cursor position (line and column) and active line for highlight
     const updateCursorPosition = useCallback(() => {
         if (!textareaRef.current) return;
@@ -479,11 +487,20 @@ function CodeEditorImpl({ content, onChange, onCursorChange, onSelectionChange, 
         const textarea = textareaRef.current;
         const cursorPos = textarea.selectionStart;
         const selEnd = textarea.selectionEnd;
+
+        // Cheap pre-check: if the raw selection range hasn't moved since the
+        // last time we ran, skip the line/col recompute entirely. This is the
+        // common case during typing — input event already fired, caret moved,
+        // selectionchange + keyup both fire, second call sees the same range.
+        const last = lastCursorRef.current;
+        if (cursorPos === last.start && selEnd === last.end) return;
+
         const textBeforeCursor = textarea.value.substring(0, cursorPos);
         const linesBeforeCursor = textBeforeCursor.split("\n");
         const line = linesBeforeCursor.length;
         const column = linesBeforeCursor[linesBeforeCursor.length - 1].length + 1;
 
+        lastCursorRef.current = { line, col: column, start: cursorPos, end: selEnd };
         setActiveLine(line);
         onCursorChange?.(line, column);
         onSelectionChange?.(cursorPos, selEnd);
@@ -1028,9 +1045,35 @@ function CodeEditorImpl({ content, onChange, onCursorChange, onSelectionChange, 
                     // pointer-events:none means the user never interacts with
                     // it directly anyway. Vertical scroll position is driven
                     // imperatively by the rAF sync below.
-                    className="absolute inset-0 text-[var(--text-primary)] pointer-events-none overflow-auto editor-overlay-scrollbar-hidden"
+                    //
+                    // `text-transparent` on the wrapper — the textarea below
+                    // owns the visible default-color glyphs (see the textarea
+                    // styling for the full story). Syntax-colored spans here
+                    // set their own color via Tailwind classes
+                    // (text-[var(--syntax-h1)] etc.), which override the
+                    // inherited transparent and paint cleanly over the
+                    // textarea's plain rendering. Plain `<span>{text}</span>`
+                    // wrappers inherit transparent → invisible from this
+                    // layer → revealed by the textarea behind.
+                    //
+                    // z-index:1 keeps this overlay above the textarea so its
+                    // syntax-colored spans paint over the textarea's plain
+                    // rendering. The transparent regions (default-color text,
+                    // background) let the textarea show through.
+                    className="absolute inset-0 z-[1] text-transparent pointer-events-none overflow-auto editor-overlay-scrollbar-hidden"
                     aria-hidden="true"
-                    style={{ ...sharedTextStyle, ...wrapStyle }}
+                    style={{
+                        ...sharedTextStyle,
+                        ...wrapStyle,
+                        // Promote the overlay to its own compositor layer so
+                        // syntax updates from React don't trigger a paint of
+                        // the underlying editor surface. Cheap on memory
+                        // (one bitmap per layer) and a meaningful win on
+                        // large docs where the overlay has thousands of
+                        // children to paint.
+                        willChange: "transform",
+                        contain: "paint",
+                    }}
                 >
                     {!wordWrap && (
                         <div
@@ -1101,9 +1144,22 @@ function CodeEditorImpl({ content, onChange, onCursorChange, onSelectionChange, 
                     />
                 )}
 
-                {/* Actual Editable Textarea — transparent text, real caret.
-                    Caret color stays opaque so users see *where* they're typing,
-                    even though the glyphs themselves are rendered by the overlay. */}
+                {/* Editable textarea — the user-visible default-color text.
+                    The overlay above paints SYNTAX-COLORED spans on top of
+                    this textarea; non-styled text is rendered transparent up
+                    there so the textarea's plain rendering shows through.
+
+                    Why this stacking order matters for typing feel: when the
+                    user types, the browser updates this textarea's value and
+                    paints the new glyph in the same frame, before React even
+                    sees the input event. Previously the textarea was
+                    `text-transparent` so the user couldn't see that instant
+                    paint — they had to wait for React to reconcile the
+                    overlay (10-30 ms+ on a big doc). With visible textarea
+                    text, the typed character appears in the same frame as
+                    the keypress and the overlay's syntax colors fade in
+                    once React catches up. End result: typing feels native,
+                    the way Notepad does. */}
                 <textarea
                     ref={textareaRef}
                     value={content}
@@ -1114,7 +1170,7 @@ function CodeEditorImpl({ content, onChange, onCursorChange, onSelectionChange, 
                     autoComplete="off"
                     autoCorrect={spellCheck ? "on" : "off"}
                     autoCapitalize="off"
-                    className="absolute inset-0 w-full h-full bg-transparent text-transparent caret-[var(--accent)] resize-none outline-none overflow-auto border-0"
+                    className="absolute inset-0 w-full h-full bg-transparent text-[var(--text-primary)] caret-[var(--accent)] resize-none outline-none overflow-auto border-0"
                     style={{
                         ...sharedTextStyle,
                         ...wrapStyle,
