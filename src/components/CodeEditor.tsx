@@ -21,6 +21,10 @@ interface CodeEditorProps {
     content: string;
     onChange: (content: string) => void;
     onCursorChange?: (line: number, column: number) => void;
+    /** Fires whenever the textarea's selection range changes. `start === end`
+     *  indicates a collapsed caret with no selection. Used by the status bar
+     *  to show "N words selected" while the user has a range highlighted. */
+    onSelectionChange?: (start: number, end: number) => void;
     onImagePaste?: () => void; // Callback when image is successfully pasted
     onError?: (message: string) => void; // Callback for error messages
     filePath?: string | null; // Current file path for saving images
@@ -105,7 +109,7 @@ const Gutter = memo(forwardRef<HTMLDivElement, { lineCount: number; activeLine: 
     }
 ));
 
-export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, onError, filePath, onScrollFraction, registerScroller, typewriterMode, showToolbar, wordWrap = true, spellCheck = false, aiConfig }: CodeEditorProps) {
+export function CodeEditor({ content, onChange, onCursorChange, onSelectionChange, onImagePaste, onError, filePath, onScrollFraction, registerScroller, typewriterMode, showToolbar, wordWrap = true, spellCheck = false, aiConfig }: CodeEditorProps) {
     // When word wrap is on, long lines wrap inside the editor and the highlight
     // overlay; when off, lines scroll horizontally. Both layers must agree on
     // these styles or the caret will visually drift away from the rendered text.
@@ -379,6 +383,7 @@ export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, on
 
         const textarea = textareaRef.current;
         const cursorPos = textarea.selectionStart;
+        const selEnd = textarea.selectionEnd;
         const textBeforeCursor = textarea.value.substring(0, cursorPos);
         const linesBeforeCursor = textBeforeCursor.split("\n");
         const line = linesBeforeCursor.length;
@@ -386,7 +391,8 @@ export function CodeEditor({ content, onChange, onCursorChange, onImagePaste, on
 
         setActiveLine(line);
         onCursorChange?.(line, column);
-    }, [onCursorChange]);
+        onSelectionChange?.(cursorPos, selEnd);
+    }, [onCursorChange, onSelectionChange]);
 
     // Track cursor on every relevant event (selectionchange catches all caret moves)
     useEffect(() => {
