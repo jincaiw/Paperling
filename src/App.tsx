@@ -54,6 +54,7 @@ import { getRecentFiles } from "./utils/persistence";
 import {
   addRecentFile,
   getAIConfig,
+  initAIKey,
   getLastFile,
   getSavedViewMode,
   getSpellCheck,
@@ -83,6 +84,11 @@ const getWordCount = (text: string): number => {
   if (!text || !text.trim()) return 0;
   return text.trim().split(/\s+/).length;
 };
+
+// Platform-aware AI shortcut hint. Windows uses Alt+J because WebView2 reserves
+// Ctrl+J for its Downloads UI before the page sees it; macOS shows ⌘J. (AI-02.)
+const IS_MAC = typeof navigator !== "undefined" && /mac/i.test(navigator.platform || navigator.userAgent || "");
+const AI_SHORTCUT = IS_MAC ? "⌘J" : "Alt+J";
 
 /**
  * Returns a value that lags behind `value` by `delay` ms. Each new `value`
@@ -198,7 +204,12 @@ function AppContent() {
   // (We previously used useDeferredValue here, but under React StrictMode + the
   // bursty state churn at file-open it could starve and leave the preview
   // showing the empty initial value.)
-  const deferredContent = useDebouncedValue(content, 80);
+  // Scale the debounce with document size: tiny docs feel instant at 80ms, but a
+  // multi-thousand-line doc benefits from coalescing more keystrokes before the
+  // (still heavy) full re-parse fires. Combined with the preview's startTransition
+  // render, this keeps typing responsive on large files. PREVIEW-01.
+  const previewDebounceMs = content.length > 40_000 ? 250 : content.length > 12_000 ? 160 : 80;
+  const deferredContent = useDebouncedValue(content, previewDebounceMs);
 
   // Word/char counts feed the status bar — fine to lag a frame behind on huge
   // docs, so they read deferred too.
@@ -302,6 +313,12 @@ function AppContent() {
       if (cancel) cancel(id);
       else window.clearTimeout(id);
     };
+  }, []);
+
+  // Hydrate the AI API key from the OS keychain on launch, then refresh the
+  // config so the editor's AI bubble has the key ready. SECURITY-01.
+  useEffect(() => {
+    initAIKey().then(() => setAiConfigState(getAIConfig()));
   }, []);
 
   useEffect(() => {
@@ -641,6 +658,12 @@ function AppContent() {
     showToast(message, 'error');
   }, [showToast]);
 
+  // Neutral info toast (distinct from error). Used e.g. when AI assist is
+  // invoked before it's configured, so the action isn't a silent no-op.
+  const handleNotice = useCallback((message: string) => {
+    showToast(message, 'info');
+  }, [showToast]);
+
   // Stable export-result callbacks so TitleBar's props are reference-equal
   // across renders. Inline arrows here would re-create the closures on every
   // App render and defeat any downstream memoization.
@@ -897,6 +920,22 @@ function AppContent() {
       });
     }
 
+    // === AI === only when a buffer exists. The command palette is the
+    // always-reachable entry point for AI assist (the toolbar AI button is
+    // hidden when the toolbar is off). Dispatches a window event the editor
+    // listens for; if AI isn't configured the editor shows a guiding notice.
+    if (hasFile) {
+      items.push({
+        id: "ai.assist",
+        label: "AI assist on selection",
+        hint: AI_SHORTCUT,
+        section: "AI",
+        icon: "auto_awesome",
+        keywords: "ai rewrite shorten expand continue translate assistant gpt llm",
+        run: () => window.dispatchEvent(new CustomEvent("marklite:ai-assist")),
+      });
+    }
+
     // === Toggles ===
     items.push({
       id: "toggle.typewriter",
@@ -1051,6 +1090,7 @@ function AppContent() {
                 onSelectionChange={handleSelectionChange}
                 onImagePaste={handleImagePaste}
                 onError={handleError}
+                onNotice={handleNotice}
                 filePath={filePath}
                 onScrollFraction={onCodeScrollFraction}
                 registerScroller={registerCodeScroller}

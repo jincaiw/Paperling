@@ -1,13 +1,17 @@
-import type { EditorResult } from "../utils/editorActions";
+import type { EditorResult, EditorState } from "../utils/editorActions";
 import { wrapSelection, insertLink } from "../utils/editorActions";
 
 interface FormatToolbarProps {
-    /** Returns the textarea so we can read selection. Null while editor not mounted. */
-    getTextarea: () => HTMLTextAreaElement | null;
+    /** Returns the current editor text + selection, or null if not mounted. */
+    getState: () => EditorState | null;
     /** Apply an EditorResult: parent updates content + restores selection. */
     apply: (r: EditorResult) => void;
     /** Insert plain text at the caret. */
     insert: (text: string) => void;
+    /** Open the AI assist bubble on the current selection. Renders an AI button
+     *  when provided — the primary visible affordance for the AI feature
+     *  (keyboard-only before; see AI-01 in AUDIT.md). */
+    onAIAssist?: () => void;
 }
 
 interface ToolButtonProps {
@@ -20,7 +24,7 @@ function ToolButton({ icon, title, onClick }: ToolButtonProps) {
     return (
         <button
             type="button"
-            onMouseDown={(e) => e.preventDefault()} // keep textarea focus
+            onMouseDown={(e) => e.preventDefault()} // keep editor focus
             onClick={onClick}
             title={title}
             aria-label={title}
@@ -33,65 +37,65 @@ function ToolButton({ icon, title, onClick }: ToolButtonProps) {
 
 const Sep = () => <div className="w-px h-5 bg-[var(--border)] mx-0.5" />;
 
-export function FormatToolbar({ getTextarea, apply, insert }: FormatToolbarProps) {
+export function FormatToolbar({ getState, apply, insert, onAIAssist }: FormatToolbarProps) {
     const wrap = (left: string, right: string, ph: string) => () => {
-        const t = getTextarea();
-        if (!t) return;
-        apply(wrapSelection({ text: t.value, selStart: t.selectionStart, selEnd: t.selectionEnd }, left, right, ph));
+        const st = getState();
+        if (!st) return;
+        apply(wrapSelection(st, left, right, ph));
     };
 
     const link = () => {
-        const t = getTextarea();
-        if (!t) return;
-        apply(insertLink({ text: t.value, selStart: t.selectionStart, selEnd: t.selectionEnd }));
+        const st = getState();
+        if (!st) return;
+        apply(insertLink(st));
     };
 
     const heading = (level: number) => () => {
-        const t = getTextarea();
-        if (!t) return;
-        const pos = t.selectionStart;
-        const before = t.value.slice(0, pos);
+        const st = getState();
+        if (!st) return;
+        const pos = st.selStart;
+        const before = st.text.slice(0, pos);
         const ls = before.lastIndexOf("\n") + 1;
-        const lineEnd = t.value.indexOf("\n", pos);
-        const end = lineEnd === -1 ? t.value.length : lineEnd;
-        const line = t.value.slice(ls, end);
+        const lineEnd = st.text.indexOf("\n", pos);
+        const end = lineEnd === -1 ? st.text.length : lineEnd;
+        const line = st.text.slice(ls, end);
         // Strip existing heading markers, then re-add
         const stripped = line.replace(/^#{1,6}\s+/, "");
         const newLine = `${"#".repeat(level)} ${stripped}`;
         apply({
-            text: t.value.slice(0, ls) + newLine + t.value.slice(end),
+            text: st.text.slice(0, ls) + newLine + st.text.slice(end),
             selStart: ls + newLine.length,
             selEnd: ls + newLine.length,
         });
     };
 
     const block = (prefix: string) => () => {
-        const t = getTextarea();
-        if (!t) return;
-        const pos = t.selectionStart;
-        const before = t.value.slice(0, pos);
+        const st = getState();
+        if (!st) return;
+        const pos = st.selStart;
+        const before = st.text.slice(0, pos);
         const ls = before.lastIndexOf("\n") + 1;
-        const lineEnd = t.value.indexOf("\n", pos);
-        const end = lineEnd === -1 ? t.value.length : lineEnd;
-        const line = t.value.slice(ls, end);
+        const lineEnd = st.text.indexOf("\n", pos);
+        const end = lineEnd === -1 ? st.text.length : lineEnd;
+        const line = st.text.slice(ls, end);
         const newLine = line.startsWith(prefix) ? line.slice(prefix.length) : prefix + line;
         const delta = newLine.length - line.length;
         apply({
-            text: t.value.slice(0, ls) + newLine + t.value.slice(end),
+            text: st.text.slice(0, ls) + newLine + st.text.slice(end),
             selStart: pos + delta,
             selEnd: pos + delta,
         });
     };
 
     const codeBlock = () => {
-        const t = getTextarea();
-        if (!t) return;
-        const sel = t.value.slice(t.selectionStart, t.selectionEnd) || "code";
+        const st = getState();
+        if (!st) return;
+        const sel = st.text.slice(st.selStart, st.selEnd) || "code";
         const inserted = `\n\`\`\`\n${sel}\n\`\`\`\n`;
         apply({
-            text: t.value.slice(0, t.selectionStart) + inserted + t.value.slice(t.selectionEnd),
-            selStart: t.selectionStart + 4, // place caret after opening fence
-            selEnd: t.selectionStart + 4 + sel.length,
+            text: st.text.slice(0, st.selStart) + inserted + st.text.slice(st.selEnd),
+            selStart: st.selStart + 4, // place caret after opening fence
+            selEnd: st.selStart + 4 + sel.length,
         });
     };
 
@@ -122,6 +126,12 @@ export function FormatToolbar({ getTextarea, apply, insert }: FormatToolbarProps
             <ToolButton icon="data_object" title="Code block" onClick={codeBlock} />
             <ToolButton icon="table_chart" title="Insert table" onClick={insertTable} />
             <ToolButton icon="horizontal_rule" title="Horizontal rule" onClick={insertHr} />
+            {onAIAssist && (
+                <>
+                    <Sep />
+                    <ToolButton icon="auto_awesome" title="AI assist (Alt+J)" onClick={onAIAssist} />
+                </>
+            )}
         </div>
     );
 }

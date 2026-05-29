@@ -1,6 +1,6 @@
 mod commands;
 
-use commands::{read_file, save_file, get_file_info, list_directory_files, save_image};
+use commands::{read_file, save_file, get_file_info, list_directory_files, save_image, read_image_file, get_ai_key, set_ai_key};
 use tauri::{Manager, Emitter};
 use std::sync::Mutex;
 
@@ -27,7 +27,10 @@ pub fn run() {
             save_file,
             get_file_info,
             list_directory_files,
-            save_image
+            save_image,
+            read_image_file,
+            get_ai_key,
+            set_ai_key
         ])
         .setup(move |app| {
             // Listen for window ready event
