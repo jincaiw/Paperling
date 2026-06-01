@@ -4,7 +4,7 @@
 </p>
 
 <p align="center">
-  <strong>A minimal, distraction-free markdown editor</strong> — live preview, math, diagrams, and an optional AI assistant. Built with Tauri, React, and TypeScript.
+  <strong>A no-setup Markdown editor</strong>: open a file and write, with live preview, math, chemistry, and diagrams as you type, plus an optional free AI that proposes edits you accept or reject inline. Built with Tauri, React, and TypeScript.
 </p>
 
 <p align="center">
@@ -12,7 +12,7 @@
   <a href="https://github.com/Razee4315/MarkLite/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/Razee4315/MarkLite/total?color=2ea043"></a>
   <a href="https://github.com/Razee4315/MarkLite/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Razee4315/MarkLite?style=flat"></a>
   <img alt="Platforms" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-555">
-  <img alt="License" src="https://img.shields.io/badge/license-source--available-blue">
+  <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-blue"></a>
   <img alt="Built with Tauri" src="https://img.shields.io/badge/built%20with-Tauri%20%2B%20Rust-FFC131">
 </p>
 
@@ -31,7 +31,7 @@
 
 As a developer, I frequently work with markdown files for documentation, notes, and project READMEs. The frustration of opening `.md` files in Notepad or basic text editors, only to see raw, unformatted text with all the symbols and syntax cluttering the content, inspired me to build MarkLite.
 
-I wanted a simple, lightweight solution that renders markdown beautifully while still giving me quick access to the raw code when I need to edit. No bloated features, no complex setup, just a clean interface that lets me focus on my content.
+I wanted something you just open and write in: it renders Markdown beautifully while keeping the raw text one keystroke away. Tools like Obsidian are powerful, but vaults, graphs, and plugins are overkill if you only want to open a file and edit it. MarkLite stays out of that complexity and adds the things I actually reach for: math and chemistry that render live, and an optional free AI (bring your own model) that proposes edits you accept or reject right in the text.
 
 ## Screenshots
 
@@ -67,6 +67,7 @@ I wanted a simple, lightweight solution that renders markdown beautifully while 
 - **Slash commands** — type `/` at line start for headings, lists, tables, math, mermaid, callouts, and more
 - **Auto-pair** brackets, quotes, and code marks; **list/quote continuation** on Enter
 - **Tab in tables** moves between cells; auto-creates new rows
+- **Visual table editing**: a toolbar appears when the caret is in a table, with buttons to add or delete rows and columns, set column alignment, and tidy the layout
 - **Find & Replace** (Ctrl+F / Ctrl+H) with regex and match counter
 - **Smart paste** — URL → link, rich HTML → markdown, TSV → GFM table
 
@@ -197,8 +198,4 @@ Linkedin: [@saqlain.razee](https://www.linkedin.com/in/saqlainrazee/)
 
 ## License
 
-This project is **source available** with restricted commercial use:
-- **Personal use** - Free to use, copy, and modify
-- **Commercial use** - Requires written permission from the author
-
-See the [LICENSE](LICENSE) file for full details.
+MarkLite is licensed under the **[Apache License 2.0](LICENSE)**: free to use, modify, and distribute for both personal and commercial purposes, with an explicit patent grant. Just keep the license and [NOTICE](NOTICE) with copies you redistribute.
