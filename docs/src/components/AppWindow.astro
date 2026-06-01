@@ -1,14 +1,20 @@
 ---
-// Frame for product screenshots and the AI mock. The captured screenshots
-// already include MarkLite's own title bar + window controls, so this is just
-// a rounded, shadowed bezel, no duplicate (and non-native) chrome on top.
+// Editor-chrome frame for product screenshots. The captured screenshots
+// already include MarkLite's own UI, so this adds just a thin mono titlebar
+// (filename + traffic dots) that ties every shot into the page's editor motif.
 interface Props {
-  label?: string; // accepted for caller compatibility; not rendered
+  label?: string; // shown in the titlebar as a filename, optional
   class?: string;
 }
-const { class: klass = "" } = Astro.props;
+const { label, class: klass = "" } = Astro.props;
 ---
 
-<div class={`window ${klass}`}>
+<div class={`editor ${klass}`}>
+  {label && (
+    <div class="editor-bar">
+      <span class="editor-dots"><i></i><i></i><i></i></span>
+      <span class="ml-1 truncate">{label}</span>
+    </div>
+  )}
   <slot />
 </div>

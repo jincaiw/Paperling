@@ -1,24 +1,31 @@
 ---
-import { Icon } from "astro-icon/components";
+// A slim status-bar strip, set like the bottom bar of a code editor.
+// Reinforces the "the page is an editor" motif instead of a logo-soup trust row.
 const items = [
-  { icon: "lucide:wifi-off", label: "Works fully offline" },
-  { icon: "lucide:eye-off", label: "No telemetry, ever" },
-  { icon: "lucide:cpu", label: "Native, Tauri + Rust" },
-  { icon: "lucide:git-fork", label: "Open source" },
-  { icon: "lucide:bot", label: "Bring your own AI model" },
+  "Markdown",
+  "UTF-8",
+  "Windows + Linux",
+  "no account",
+  "no telemetry",
+  "100% offline",
+  "Apache-2.0",
 ];
 ---
 
-<section class="border-y border-line-soft bg-ink-950/60">
+<section class="border-y border-line-soft bg-ink-950/70">
   <div
-    class="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-8 gap-y-3 px-5 py-6 text-sm text-fg-dim"
+    class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-5 gap-y-2 px-5 py-3 font-mono text-[12px] text-fg-dim"
     data-reveal
   >
+    <span class="flex items-center gap-2 text-fg-muted">
+      <span class="inline-block h-1.5 w-1.5 rounded-full bg-[var(--color-ok)]"></span>
+      Ln 1, Col 1
+    </span>
     {items.map((it) => (
-      <span class="inline-flex items-center gap-2">
-        <Icon name={it.icon} class="h-4 w-4 text-fg-muted" />
-        {it.label}
-      </span>
+      <>
+        <span class="text-fg-dim/40">·</span>
+        <span>{it}</span>
+      </>
     ))}
   </div>
 </section>

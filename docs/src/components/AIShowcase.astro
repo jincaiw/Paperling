@@ -35,9 +35,9 @@ const points = [
 
   <div class="relative z-10 mx-auto grid max-w-6xl items-center gap-14 px-5 lg:grid-cols-2">
     <div data-reveal>
-      <p class="eyebrow"><Icon name="lucide:sparkles" class="h-4 w-4 text-cyan" /> AI assistant</p>
-      <h2 class="mt-3 text-4xl font-extrabold tracking-tight md:text-5xl">
-        AI that <span class="text-gradient">edits</span>, not just chats
+      <p class="mono-label"><span class="tok-mark-cyan">&gt;</span> ai assistant</p>
+      <h2 class="font-serif-display mt-3 text-[clamp(2.2rem,5vw,3.5rem)]">
+        AI that <em class="text-gradient">edits</em>, not just chats.
       </h2>
       <p class="mt-4 text-lg text-fg-muted">
         Most editors bolt on a chatbot. MarkLite's Agent proposes real edits to your document as a
@@ -61,7 +61,7 @@ const points = [
 
     <!-- Live Agent inline-diff mock -->
     <div data-reveal>
-      <AppWindow label="notes.md, Agent">
+      <AppWindow label="notes.md">
         <div class="bg-ink-900 p-3 font-mono text-[13px] leading-relaxed">
           <!-- composer -->
           <div class="ai-composer-demo mb-3 flex items-center gap-2 rounded-lg border border-line bg-ink-850 px-3 py-2">

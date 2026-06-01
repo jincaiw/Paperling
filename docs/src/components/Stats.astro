@@ -14,21 +14,22 @@ const stats = [
 <section class="py-16 md:py-20" data-stats>
   <div class="mx-auto max-w-5xl px-5">
     <div
-      class="card grid grid-cols-2 gap-px overflow-hidden md:grid-cols-4"
+      class="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-line md:grid-cols-4"
       data-reveal
       style="background: var(--color-line)"
     >
       {stats.map((s) => (
-        <div class="flex flex-col items-center gap-2 bg-ink-900 px-6 py-9 text-center">
-          <Icon name={s.icon} class="h-5 w-5 text-brand" />
-          <div class="text-3xl font-extrabold tracking-tight md:text-4xl">
+        <div class="flex flex-col gap-2 bg-ink-900 px-6 py-8">
+          <div class="flex items-center gap-2 font-mono text-[11px] uppercase tracking-wide text-fg-dim">
+            <Icon name={s.icon} class="h-3.5 w-3.5 text-brand" /> {s.label}
+          </div>
+          <div class="font-mono text-3xl font-medium tracking-tight tabular-nums md:text-4xl">
             {s.live ? (
               <span data-stat={s.live} data-fallback={s.value}>{s.value}</span>
             ) : (
               s.value
             )}
           </div>
-          <div class="text-sm text-fg-muted">{s.label}</div>
         </div>
       ))}
     </div>

@@ -1,63 +1,71 @@
 ---
 import { Icon } from "astro-icon/components";
 
-const features = [
+const rows = [
   {
     icon: "lucide:sparkles",
-    title: "AI assistant: Ask & Agent",
-    desc: "Chat about your document, or let Agent mode propose edits as an inline diff you accept or reject, per change. Bring your own model: OpenAI, Gemini, Ollama, llama.cpp.",
-    span: true,
+    title: "AI: Ask & Agent",
+    desc: "Chat about your document, or let Agent propose edits as an inline diff you accept or reject. Bring your own model.",
+    kbd: "Agent",
     accent: "cyan",
   },
   {
     icon: "lucide:columns-2",
     title: "Reader · Code · Split",
-    desc: "Toggle rendered reading, raw code, and a split view with bidirectional scroll sync.",
+    desc: "Rendered reading, raw source, or both side by side with bidirectional scroll sync.",
+    kbd: "Ctrl+\\",
   },
   {
     icon: "lucide:sigma",
     title: "Math & chemistry",
-    desc: "KaTeX for inline and block math, plus mhchem for equations, ions, and isotopes, rare in an editor this simple.",
+    desc: "KaTeX for inline and block math, plus mhchem for equations, ions, and isotopes.",
+    kbd: "$ … $",
   },
   {
     icon: "lucide:workflow",
     title: "Mermaid diagrams",
-    desc: "Flowcharts, sequence, class, state, gantt, ER, and mindmaps render right in the preview.",
+    desc: "Flowcharts, sequence, class, state, gantt, ER, and mindmaps render live in the preview.",
+    kbd: "```mermaid",
   },
   {
     icon: "lucide:slash",
     title: "Slash commands",
     desc: "Type / for headings, lists, tables, math, callouts, and more. No syntax to memorize.",
+    kbd: "/",
   },
   {
     icon: "lucide:link",
     title: "Wikilinks & outline",
     desc: "[[other-file]] links resolve in the folder, with an outline pane that follows your cursor.",
+    kbd: "[[ ]]",
   },
   {
     icon: "lucide:command",
     title: "Command palette",
-    desc: "Ctrl+P to jump to any command, file, heading, or toggle. Find & Replace with regex too.",
+    desc: "Jump to any command, file, heading, or toggle. Find & Replace with regex too.",
+    kbd: "Ctrl+P",
   },
   {
     icon: "lucide:palette",
     title: "Themes & typography",
-    desc: "Four themes (Dark, Light, Paper, GitHub), five fonts, three sizes, focus & typewriter modes.",
+    desc: "Four themes, five fonts, three sizes, plus focus and typewriter modes.",
+    kbd: "4 themes",
   },
   {
     icon: "lucide:zap",
     title: "Native & private",
-    desc: "Built with Tauri + Rust: small, fast, offline. No accounts, no tracking, files stay local.",
+    desc: "Built on Tauri + Rust: small, fast, offline. No accounts, no tracking, files stay local.",
+    kbd: "Tauri",
   },
 ];
 ---
 
 <section id="features" class="relative py-24 md:py-32">
-  <div class="mx-auto max-w-6xl px-5">
+  <div class="mx-auto max-w-5xl px-5">
     <div class="max-w-2xl" data-reveal>
-      <p class="eyebrow">Features</p>
-      <h2 class="mt-3 text-4xl font-extrabold tracking-tight md:text-5xl">
-        Power features, none of the setup
+      <p class="mono-label"><span class="tok-mark">##</span> features</p>
+      <h2 class="font-serif-display mt-3 text-[clamp(2.2rem,5vw,3.5rem)]">
+        Power features, none of the setup.
       </h2>
       <p class="mt-4 text-lg text-fg-muted">
         A focused writing surface with the power features pros expect, and a few you won't find
@@ -65,25 +73,20 @@ const features = [
       </p>
     </div>
 
-    <div class="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {features.map((f) => (
-        <article
-          class={`card ring-glow p-6 ${f.span ? "sm:col-span-2" : ""}`}
-          data-reveal
-        >
-          <span
-            class={`inline-flex h-11 w-11 items-center justify-center rounded-xl border border-line ${
-              f.accent === "cyan" ? "text-cyan" : "text-brand"
-            }`}
-            style={`background: color-mix(in srgb, ${
-              f.accent === "cyan" ? "var(--color-cyan)" : "var(--color-brand)"
-            } 12%, transparent)`}
-          >
-            <Icon name={f.icon} class="h-5 w-5" />
-          </span>
-          <h3 class="mt-5 text-lg font-semibold tracking-tight">{f.title}</h3>
-          <p class="mt-2 text-[15px] leading-relaxed text-fg-muted">{f.desc}</p>
-        </article>
+    <div class="matrix mt-12" data-reveal>
+      {rows.map((r) => (
+        <div class="matrix-row">
+          <div class="flex items-center gap-3">
+            <span class={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-line ${r.accent === "cyan" ? "text-cyan" : "text-brand"}`}>
+              <Icon name={r.icon} class="h-4 w-4" />
+            </span>
+            <h3 class="font-medium tracking-tight">{r.title}</h3>
+          </div>
+          <p class="text-[15px] leading-relaxed text-fg-muted">{r.desc}</p>
+          <div class="md:text-right">
+            <span class={`kbd ${r.accent === "cyan" ? "!text-cyan" : ""}`}>{r.kbd}</span>
+          </div>
+        </div>
       ))}
     </div>
   </div>

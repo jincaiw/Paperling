@@ -3,13 +3,26 @@ import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 
 /**
- * Site motion: smooth scroll (Lenis) + scroll-reveal / parallax (GSAP).
- * Everything degrades gracefully: with reduced-motion we reveal instantly and
- * skip the smooth-scroll hijack entirely.
+ * Site motion: smooth scroll (Lenis) + scroll-reveal / parallax (GSAP) +
+ * a sticky-nav solidify on scroll.
+ *
+ * Everything degrades gracefully: under prefers-reduced-motion we reveal
+ * instantly and skip the smooth-scroll hijack. The page is fully readable
+ * with JS disabled.
  */
 export function initMotion(): void {
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const reveals = gsap.utils.toArray<HTMLElement>("[data-reveal]");
+
+  /* Sticky nav: solidify after scrolling past the top. Runs in every mode via a
+     native scroll listener, so reduced-motion users also get a readable nav
+     (important over the light Paper section). */
+  const navEl = document.querySelector<HTMLElement>("[data-nav]");
+  if (navEl) {
+    const syncNav = () => navEl.classList.toggle("is-stuck", window.scrollY > 8);
+    window.addEventListener("scroll", syncNav, { passive: true });
+    syncNav();
+  }
 
   if (reduce) {
     reveals.forEach((el) => el.classList.add("is-revealed"));
@@ -40,19 +53,6 @@ export function initMotion(): void {
     });
   });
 
-  /* ---- Sticky nav: solidify after scrolling past the hero top ---- */
-  const nav = document.querySelector<HTMLElement>("[data-nav]");
-  if (nav) {
-    ScrollTrigger.create({
-      start: "top -8",
-      onUpdate: (self) => nav.classList.toggle("is-stuck", self.scroll() > 8),
-      onToggle: (self) => nav.classList.toggle("is-stuck", self.isActive || window.scrollY > 8),
-    });
-    const sync = () => nav.classList.toggle("is-stuck", window.scrollY > 8);
-    lenis.on("scroll", sync);
-    sync();
-  }
-
   /* ---- Scroll-reveal, batched & staggered by group ---- */
   ScrollTrigger.batch("[data-reveal]", {
     start: "top 88%",
@@ -77,36 +77,6 @@ export function initMotion(): void {
     });
   });
 
-  /* ---- Hero "assemble": source lines type in, preview blocks fade after ---- */
-  const srcLines = gsap.utils.toArray<HTMLElement>("[data-type-line]");
-  const prevBlocks = gsap.utils.toArray<HTMLElement>("[data-prev-block]");
-  if (srcLines.length || prevBlocks.length) {
-    const tl = gsap.timeline({ delay: 0.25 });
-    if (srcLines.length) {
-      gsap.set(srcLines, { opacity: 0, x: -8 });
-      tl.to(srcLines, { opacity: 1, x: 0, duration: 0.4, stagger: 0.09, ease: "power2.out" });
-    }
-    if (prevBlocks.length) {
-      gsap.set(prevBlocks, { opacity: 0, y: 12 });
-      tl.to(prevBlocks, { opacity: 1, y: 0, duration: 0.6, stagger: 0.12, ease: "expo.out" }, "-=0.6");
-    }
-  }
-
-  /* ---- Cursor-reactive glow in the hero ---- */
-  const spot = document.querySelector<HTMLElement>("[data-hero-spot]");
-  const hero = document.querySelector<HTMLElement>("#top");
-  if (spot && hero && window.matchMedia("(pointer: fine)").matches) {
-    const xTo = gsap.quickTo(spot, "x", { duration: 0.7, ease: "power3.out" });
-    const yTo = gsap.quickTo(spot, "y", { duration: 0.7, ease: "power3.out" });
-    hero.addEventListener("pointermove", (e) => {
-      const r = hero.getBoundingClientRect();
-      xTo(e.clientX - r.left);
-      yTo(e.clientY - r.top);
-      spot.style.opacity = "1";
-    });
-    hero.addEventListener("pointerleave", () => (spot.style.opacity = "0"));
-  }
-
-  /* Recalculate once fonts settle to avoid trigger drift */
+  /* Recalculate once fonts settle to avoid scroll-trigger drift */
   if (document.fonts?.ready) document.fonts.ready.then(() => ScrollTrigger.refresh());
 }

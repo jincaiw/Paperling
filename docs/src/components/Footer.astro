@@ -13,13 +13,27 @@ const links = [
 ];
 ---
 
-<footer class="border-t border-line py-14">
-  <div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-8 px-5 md:flex-row">
+<footer class="border-t border-line">
+  <!-- end-of-file motif -->
+  <div class="mx-auto max-w-6xl px-5 pt-10 font-mono text-[13px] leading-relaxed" data-reveal>
+    <div class="flex">
+      <span class="linenum w-8 shrink-0">38</span>
+      <span class="text-fg-muted"><span class="text-brand">#</span> Thanks for scrolling.<span class="caret"></span></span>
+    </div>
+    {[39, 40, 41].map((n) => (
+      <div class="flex">
+        <span class="linenum w-8 shrink-0">{n}</span>
+        <span class="eof-tilde">~</span>
+      </div>
+    ))}
+  </div>
+
+  <div class="mx-auto mt-8 flex max-w-6xl flex-col items-center justify-between gap-8 px-5 pb-6 md:flex-row">
     <div class="flex items-center gap-3">
       <img src={`${base}icon.svg`} alt="MarkLite logo" width="30" height="30" class="h-[30px] w-[30px]" />
       <div>
         <div class="font-semibold tracking-tight">MarkLite</div>
-        <div class="text-sm text-fg-dim">© {year} Saqlain Abbas · Source-available</div>
+        <div class="text-sm text-fg-dim">© {year} Saqlain Abbas · Apache-2.0</div>
       </div>
     </div>
 
@@ -39,5 +53,18 @@ const links = [
     >
       <Icon name="lucide:star" class="h-4 w-4" /> Star on GitHub
     </a>
+  </div>
+
+  <!-- editor status line -->
+  <div class="border-t border-line-soft bg-ink-950/70">
+    <div class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-1 px-5 py-2.5 font-mono text-[11px] text-fg-dim">
+      <span class="rounded bg-brand/15 px-1.5 py-0.5 font-semibold text-brand-soft">NORMAL</span>
+      <span>readme.md</span>
+      <span class="text-fg-dim/40">·</span>
+      <span>markdown</span>
+      <span class="text-fg-dim/40">·</span>
+      <span>UTF-8</span>
+      <span class="ml-auto">Ln 42, Col 1</span>
+    </div>
   </div>
 </footer>

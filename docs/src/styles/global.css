@@ -1,8 +1,14 @@
 @import "tailwindcss";
 
 /* ============================================================
-   MarkLite, landing page design system
-   Dark, editorial, with the brand's orange (#FF8C00) + cyan (#00E5FF).
+   MarkLite, landing page design system, "The Living Document"
+   The page reads like one continuous editor: raw monospace source
+   on one side, a typeset rendered document on the other, divided by
+   a single orange -> cyan seam. Type triad does the talking:
+     mono  = the source / the machine        (JetBrains Mono)
+     serif = the rendered, typeset document   (Instrument Serif)
+     sans  = the quiet narrator / UI chrome    (Inter)
+   Dark by default, with one deliberate warm Paper defection.
    ============================================================ */
 
 @theme {
@@ -21,6 +27,13 @@
   --color-fg-muted: #a7a7b4;
   --color-fg-dim: #6c6c7a;
 
+  /* Paper, the warm defection (one full section flips to this) */
+  --color-paper: #f5f0e6;
+  --color-paper-panel: #fbf6ea;
+  --color-paper-line: #e3d8c2;
+  --color-paper-ink: #2b2420;
+  --color-paper-muted: #6f6149;
+
   /* Brand */
   --color-brand: #ff8c00;
   --color-brand-soft: #ffab40;
@@ -31,7 +44,7 @@
   --color-ok: #2ea043;
   --color-warn: #f59e0b;
 
-  /* Typography */
+  /* Typography, the triad */
   --font-sans: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-serif: "Instrument Serif", Georgia, "Times New Roman", serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -44,6 +57,7 @@
 :root {
   --diff-add-bg: rgba(46, 160, 67, 0.2);
   --diff-add-border: #2ea043;
+  --diff-add-text: #56d364;
   --diff-del-bg: rgba(248, 81, 73, 0.18);
   --diff-del-border: #f85149;
   --diff-del-text: #ff7b72;
@@ -108,12 +122,33 @@ canvas {
 .font-serif-display {
   font-family: var(--font-serif);
   font-weight: 400;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
+  line-height: 0.98;
+}
+.font-serif-display em {
+  font-style: italic;
+}
+
+/* Mono "source token" eyebrow, replaces the old uppercase eyebrow.
+   Markup supplies the leading glyph (## or > or //) colored by .tok-mark. */
+.mono-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--color-fg-dim);
+}
+.tok-mark {
+  color: var(--color-brand);
+}
+.tok-mark-cyan {
+  color: var(--color-cyan);
 }
 
 .text-gradient {
-  /* Warm -> light -> cool, routed through a light midtone so orange never
-     blends into cyan through a muddy grey-green. */
   background: linear-gradient(100deg, #ff8c00 0%, #ffb15a 28%, #ffe1bf 47%, #bfeef2 62%, #38d9f0 82%, #00e5ff 100%);
   -webkit-background-clip: text;
   background-clip: text;
@@ -140,28 +175,30 @@ canvas {
 .text-balance {
   text-wrap: balance;
 }
+.text-pretty {
+  text-wrap: pretty;
+}
 
 /* ===== Backdrop layers ===== */
 
-/* Animated aurora glow used behind the hero */
+/* Aurora glow, demoted to a faint warmth behind ink sections only */
 .aurora {
   position: absolute;
   inset: -40% -10% auto -10%;
-  height: 80vh;
+  height: 70vh;
   pointer-events: none;
   z-index: 0;
-  filter: blur(70px);
-  opacity: 0.7;
+  filter: blur(80px);
+  opacity: 0.4;
   background:
-    radial-gradient(40% 50% at 22% 28%, color-mix(in srgb, var(--color-brand) 75%, transparent), transparent 70%),
-    radial-gradient(38% 48% at 80% 26%, color-mix(in srgb, var(--color-cyan) 62%, transparent), transparent 70%),
-    radial-gradient(50% 60% at 50% 72%, color-mix(in srgb, var(--color-brand) 32%, transparent), transparent 75%);
-  animation: aurora-drift 16s var(--ease-out-expo) infinite alternate;
+    radial-gradient(40% 50% at 22% 30%, color-mix(in srgb, var(--color-brand) 60%, transparent), transparent 70%),
+    radial-gradient(38% 48% at 82% 26%, color-mix(in srgb, var(--color-cyan) 42%, transparent), transparent 70%);
+  animation: aurora-drift 18s var(--ease-out-expo) infinite alternate;
 }
 
 @keyframes aurora-drift {
   0% { transform: translate3d(-3%, 0, 0) scale(1); }
-  100% { transform: translate3d(3%, 2%, 0) scale(1.1); }
+  100% { transform: translate3d(3%, 2%, 0) scale(1.08); }
 }
 
 /* Subtle dotted grid */
@@ -175,24 +212,6 @@ canvas {
   mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 30%, transparent 75%);
 }
 
-/* Cursor-reactive glow in the hero, positioned by motion.ts on pointer move */
-.hero-spot {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 620px;
-  height: 620px;
-  margin: -310px 0 0 -310px;
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 0;
-  background: radial-gradient(circle, color-mix(in srgb, var(--color-brand) 18%, transparent), transparent 62%);
-  filter: blur(40px);
-  opacity: 0;
-  transition: opacity 0.6s ease;
-  will-change: transform;
-}
-
 /* Film grain for a tactile, premium feel */
 .grain::after {
   content: "";
@@ -200,7 +219,7 @@ canvas {
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  opacity: 0.035;
+  opacity: 0.03;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
@@ -222,31 +241,113 @@ canvas {
   border: 1px solid var(--color-line);
 }
 
-/* Gradient ring on hover for feature cards */
-.ring-glow {
+/* ===== The editor frame, the page's master device ===== */
+.editor {
   position: relative;
-  isolation: isolate;
-  transition: transform 0.35s var(--ease-out-expo), border-color 0.35s ease;
+  border-radius: 14px;
+  border: 1px solid var(--color-line);
+  background: var(--color-ink-850);
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.04) inset,
+    0 40px 120px -40px rgba(0, 0, 0, 0.9),
+    0 12px 40px -20px color-mix(in srgb, var(--color-brand) 18%, transparent);
+  overflow: hidden;
 }
-.ring-glow::before {
+/* Window chrome bar: filename (mono) + traffic dots + view tabs */
+.editor-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--color-line);
+  background: color-mix(in srgb, var(--color-ink-900) 80%, #000);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--color-fg-dim);
+}
+.editor-dots {
+  display: inline-flex;
+  gap: 6px;
+}
+.editor-dots i {
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  background: var(--color-ink-600);
+}
+
+/* Line-number gutter (used by the footer's end-of-file motif) */
+.linenum {
+  user-select: none;
+  color: var(--color-fg-dim);
+  opacity: 0.55;
+  padding-right: 1rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===== Paper zone, the warm defection ===== */
+.paper {
+  background: var(--color-paper);
+  color: var(--color-paper-ink);
+}
+.paper-panel {
+  background: var(--color-paper-panel);
+  border-color: var(--color-paper-line);
+}
+.paper .text-muted-zone { color: var(--color-paper-muted); }
+
+/* ===== Feature matrix (gapless ruled table, not an icon grid) ===== */
+.matrix {
+  border: 1px solid var(--color-line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--color-ink-900) 60%, transparent);
+}
+.matrix-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.25rem 1.25rem;
+  padding: 1.15rem 1.35rem;
+  border-top: 1px solid var(--color-line);
+  transition: background 0.25s ease;
+}
+.matrix-row:first-child { border-top: 0; }
+@media (min-width: 768px) {
+  .matrix-row {
+    grid-template-columns: 13rem 1fr 7rem;
+    align-items: baseline;
+  }
+}
+.matrix-row::before {
   content: "";
   position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(130deg, var(--color-brand), transparent 40%, transparent 60%, var(--color-cyan));
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  opacity: 0;
-  transition: opacity 0.35s ease;
-  z-index: -1;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--color-brand);
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: transform 0.3s var(--ease-out-expo);
 }
-.ring-glow:hover {
-  transform: translateY(-4px);
+.matrix-row:hover {
+  background: color-mix(in srgb, var(--color-fg) 3.5%, transparent);
 }
-.ring-glow:hover::before {
-  opacity: 1;
+.matrix-row:hover::before {
+  transform: scaleY(1);
+}
+.kbd {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--color-fg-muted);
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  padding: 0.12rem 0.45rem;
+  background: color-mix(in srgb, var(--color-fg) 4%, transparent);
+  white-space: nowrap;
 }
 
 /* ===== Buttons ===== */
@@ -287,19 +388,18 @@ canvas {
   border-color: color-mix(in srgb, var(--color-fg) 28%, transparent);
   background: color-mix(in srgb, var(--color-fg) 9%, transparent);
 }
-
-/* ===== Eyebrow / pill ===== */
-.eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--color-fg-dim);
+/* Ghost button tuned for the Paper zone */
+.paper .btn-ghost {
+  color: var(--color-paper-ink);
+  background: color-mix(in srgb, var(--color-paper-ink) 5%, transparent);
+  border-color: var(--color-paper-line);
+}
+.paper .btn-ghost:hover {
+  border-color: color-mix(in srgb, var(--color-paper-ink) 30%, transparent);
+  background: color-mix(in srgb, var(--color-paper-ink) 9%, transparent);
 }
 
+/* ===== Pills ===== */
 .pill {
   display: inline-flex;
   align-items: center;
@@ -312,9 +412,7 @@ canvas {
   background: color-mix(in srgb, var(--color-fg) 4%, transparent);
 }
 
-/* ===== Scroll-reveal (driven by GSAP) =====
-   Only hide when JS is confirmed (the .js class is set synchronously in <head>
-   before first paint). No-JS users, and search crawlers, get visible content. */
+/* ===== Scroll-reveal (driven by GSAP) ===== */
 .js [data-reveal] {
   opacity: 0;
   transform: translateY(24px);
@@ -325,18 +423,6 @@ canvas {
   transform: none;
 }
 
-/* ===== App window chrome (wraps screenshots + the live mock) ===== */
-.window {
-  position: relative;
-  border-radius: 14px;
-  border: 1px solid var(--color-line);
-  background: var(--color-ink-850);
-  box-shadow:
-    0 1px 0 0 rgba(255, 255, 255, 0.04) inset,
-    0 40px 120px -40px rgba(0, 0, 0, 0.9),
-    0 12px 40px -20px color-mix(in srgb, var(--color-brand) 22%, transparent);
-  overflow: hidden;
-}
 /* ===== Reduced motion ===== */
 @media (prefers-reduced-motion: reduce) {
   html {
@@ -358,6 +444,7 @@ canvas {
   }
 }
 
+/* ===== Caret (the through-line "someone is writing" cue) ===== */
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
@@ -371,6 +458,9 @@ canvas {
   margin-left: 1px;
   animation: blink 1.05s step-end infinite;
 }
+@media (prefers-reduced-motion: reduce) {
+  .caret { animation: none; }
+}
 
 @keyframes float-y {
   0%, 100% { transform: translateY(0); }
@@ -378,6 +468,13 @@ canvas {
 }
 .float {
   animation: float-y 6s ease-in-out infinite;
+}
+
+/* ===== EOF footer motif (vim end-of-buffer tildes) ===== */
+.eof-tilde {
+  font-family: var(--font-mono);
+  color: var(--color-fg-dim);
+  opacity: 0.4;
 }
 
 /* ===== Lenis smooth scroll ===== */
