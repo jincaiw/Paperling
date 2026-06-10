@@ -6,6 +6,7 @@ import {
     getAIConfig, setAIConfig,
     getWordWrap, setWordWrap,
     getSpellCheck, setSpellCheck,
+    getAutoSave, setAutoSave,
 } from "../utils/persistence";
 import { attachFocusTrap } from "../utils/focusTrap";
 import { isValidEndpoint, runAIAction } from "../utils/aiAssist";
@@ -95,6 +96,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const [toolbar, setToolbarLocal] = useState(getToolbarEnabled);
     const [wordWrap, setWordWrapLocal] = useState(getWordWrap);
     const [spellCheck, setSpellCheckLocal] = useState(getSpellCheck);
+    const [autoSave, setAutoSaveLocal] = useState(getAutoSave);
 
     const [ai, setAi] = useState(getAIConfig);
     const aiEndpointInvalid = ai.endpoint.length > 0 && !isValidEndpoint(ai.endpoint);
@@ -311,6 +313,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                 {matches("spell check") && (
                                     <ToggleRow label="Spell check" description="Underline misspelled words while you type" checked={spellCheck}
                                         onChange={(v) => { setSpellCheckLocal(v); setSpellCheck(v); fire("paperling:spellcheck-toggle", v); }} />
+                                )}
+                                {matches("autosave") && (
+                                    <ToggleRow label="Autosave" description="Save automatically a moment after you stop typing" checked={autoSave}
+                                        onChange={(v) => { setAutoSaveLocal(v); setAutoSave(v); fire("paperling:autosave-toggle", v); }} />
                                 )}
                             </div>
                         )}
