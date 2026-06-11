@@ -25,6 +25,7 @@
     "dialog:allow-save",
     "updater:default",
     "process:allow-restart",
+    "mcp-bridge:default",
     {
       "identifier": "fs:scope",
       "allow": [{ "path": "**" }]

@@ -33,6 +33,10 @@ tokio = { version = "1", features = ["fs"] }
 # Credential Manager, macOS Keychain, and Linux Secret Service (zbus + crypto-rust,
 # no system C libs needed at build time).
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
+# Dev-tooling bridge for UI automation (screenshots, DOM inspection) from
+# Claude Code's Tauri MCP server. Registered only in debug builds (lib.rs),
+# so release binaries never start its WebSocket server.
+tauri-plugin-mcp-bridge = "0.11"
 
 # Auto-update from GitHub Releases (latest.json) + relaunch after install.
 # Desktop-only: the updater has no mobile implementation.

@@ -58,6 +58,17 @@ pub fn run() {
                 app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
                 app.handle().plugin(tauri_plugin_process::init())?;
             }
+            // UI-automation bridge for the Tauri MCP server. Debug builds
+            // only; bound to localhost so nothing on the network can drive
+            // the app.
+            #[cfg(debug_assertions)]
+            {
+                app.handle().plugin(
+                    tauri_plugin_mcp_bridge::Builder::new()
+                        .bind_address("127.0.0.1")
+                        .build(),
+                )?;
+            }
             Ok(())
         })
         .manage(CliFile(Mutex::new(cli_file)))
