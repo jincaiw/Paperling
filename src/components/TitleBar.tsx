@@ -15,9 +15,11 @@ interface TitleBarProps {
     onExportError?: (format: string) => void;
     onToggleAI?: () => void;
     aiActive?: boolean;
+    isFullscreen?: boolean;
+    onToggleFullscreen?: () => void;
 }
 
-function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, getExportHtml, onExportSuccess, onExportError, onToggleAI, aiActive }: TitleBarProps) {
+function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, getExportHtml, onExportSuccess, onExportError, onToggleAI, aiActive, isFullscreen, onToggleFullscreen }: TitleBarProps) {
     const handleMinimize = async () => {
         try {
             const appWindow = Window.getCurrent();
@@ -28,6 +30,14 @@ function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, getE
     };
 
     const handleMaximize = async () => {
+        // While fullscreen, this button is the "exit fullscreen" control —
+        // toggling maximize underneath an active fullscreen is what produced
+        // the black-bar / stuck-taskbar state on Windows. Route it through the
+        // same fullscreen toggle (which also restores the prior maximize).
+        if (isFullscreen) {
+            onToggleFullscreen?.();
+            return;
+        }
         try {
             const appWindow = Window.getCurrent();
             await appWindow.toggleMaximize();
@@ -50,9 +60,11 @@ function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, getE
         try {
             const appWindow = Window.getCurrent();
             // Native title bars maximize on double-click; event.detail
-            // counts clicks within the double-click interval.
+            // counts clicks within the double-click interval. While fullscreen
+            // a double-click exits it (same reason as the maximize button).
             if (event.detail === 2) {
-                await appWindow.toggleMaximize();
+                if (isFullscreen) onToggleFullscreen?.();
+                else await appWindow.toggleMaximize();
             } else {
                 await appWindow.startDragging();
             }
@@ -176,10 +188,11 @@ function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, getE
                     </button>
                     <button
                         onClick={handleMaximize}
-                        aria-label="Maximize"
+                        aria-label={isFullscreen ? "Exit fullscreen" : "Maximize"}
+                        title={isFullscreen ? "Exit fullscreen (F11)" : "Maximize"}
                         className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                     >
-                        <span className="material-symbols-outlined text-[16px]">crop_square</span>
+                        <span className="material-symbols-outlined text-[16px]">{isFullscreen ? "fullscreen_exit" : "crop_square"}</span>
                     </button>
                     <button
                         onClick={handleCloseClick}

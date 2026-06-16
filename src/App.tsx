@@ -854,17 +854,48 @@ function AppContent() {
   const handleToggleAI = useCallback(() => setShowAIPanel((v) => !v), []);
 
   // Toggle OS fullscreen (F11). The custom title bar deliberately stays
-  // visible so there's always an obvious way back (the same controls, plus
-  // F11 again); a one-time hint reinforces it for non-technical users. One
-  // Tauri call covers Windows, Linux, and macOS. FULLSCREEN-01.
+  // visible so there's always an obvious way back (its square button turns
+  // into "exit fullscreen", plus F11 again); a one-time hint reinforces it.
+  //
+  // Two Windows-specific footguns, both worked around here. (1) On a frameless
+  // (decorations:false) window, entering fullscreen while MAXIMIZED leaves a
+  // black bar where the taskbar was / overflows the right edge — a known tao
+  // bug. So we drop maximize first and restore it on exit. (2) isFullscreen()
+  // returns unreliable values for frameless windows, so F11 "wouldn't exit";
+  // we track the state ourselves instead of querying it. FULLSCREEN-01.
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const isFullscreenRef = useRef(false);
+  const wasMaximizedRef = useRef(false);
+  // Drops an opaque cover over the webview while the window resizes. The
+  // unmaximize→fullscreen step (and its reverse) physically resizes the window
+  // twice, so the content visibly reflows mid-transition — a jarring "snap".
+  // We snap the cover on instantly, let the OS settle behind it, then fade it
+  // out, so the change reads as a smooth dip instead of a jump.
+  const [fsTransition, setFsTransition] = useState(false);
   const toggleFullscreen = useCallback(async () => {
     try {
       const w = Window.getCurrent();
-      const isFs = await w.isFullscreen();
-      await w.setFullscreen(!isFs);
-      if (!isFs) showToast("Fullscreen on — press F11 to exit", "info");
+      const next = !isFullscreenRef.current;
+      setFsTransition(true);
+      // Yield one frame so the cover actually paints before the window starts
+      // resizing underneath it — otherwise the first reflow frame leaks through.
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+      if (next) {
+        wasMaximizedRef.current = await w.isMaximized();
+        if (wasMaximizedRef.current) await w.unmaximize();
+        await w.setFullscreen(true);
+        showToast("Fullscreen on — press F11 to exit", "info");
+      } else {
+        await w.setFullscreen(false);
+        if (wasMaximizedRef.current) await w.maximize();
+      }
+      isFullscreenRef.current = next;
+      setIsFullscreen(next);
     } catch {
       /* browser dev mode — no Tauri window */
+    } finally {
+      // Reveal once the resize has settled; the cover fades out via CSS.
+      window.setTimeout(() => setFsTransition(false), 200);
     }
   }, [showToast]);
 
@@ -1255,6 +1286,8 @@ function AppContent() {
         onExportError={handleExportError}
         onToggleAI={aiEnabled ? handleToggleAI : undefined}
         aiActive={showAIPanel}
+        isFullscreen={isFullscreen}
+        onToggleFullscreen={toggleFullscreen}
       />
 
       {/* Startup update check; invisible unless an update is actually available. */}
@@ -1458,6 +1491,15 @@ function AppContent() {
           />
         </Suspense>
       )}
+
+      {/* Fullscreen transition cover. Snaps opaque instantly (no fade-in) to
+          hide the mid-resize reflow, then fades out over 300ms to reveal the
+          settled layout. Sits above everything; pointer-events-none so it never
+          eats a click once it's transparent. */}
+      <div
+        aria-hidden="true"
+        className={`fixed inset-0 z-[200] bg-[var(--bg-primary)] pointer-events-none ${fsTransition ? "opacity-100" : "opacity-0 invisible transition-[opacity,visibility] duration-300"}`}
+      />
 
       {/* Loading overlay */}
       {isLoading && (
