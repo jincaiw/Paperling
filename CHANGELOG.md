@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.30] - 2026-06-18
+
 ### Changed
 
 - The "What's new" update popup now shows a concise summary of just the latest
