@@ -1,272 +1,75 @@
 # Changelog
 
-All notable changes to MarkLite will be documented in this file.
+All notable changes to Paperling will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- The "What's new" update popup now shows a concise summary of just the latest
+  release's changes, instead of the full changelog history.
+
+## [1.0.29] - 2026-06-18
+
 ### Added
 
-- **Fullscreen mode (F11).** Press F11 to toggle distraction-free fullscreen on
-  Windows, Linux, and macOS. The title bar stays visible so there's always an
-  obvious way back, and a one-time hint reminds you to press F11 to exit. Also
-  available from the command palette.
-- **Auto-updater.** Paperling now checks GitHub Releases on launch and shows a
-  popup when a newer version is available, with "Update now" (download with
-  progress, install, restart), "Skip this version" (remembered per version),
-  and "Later". Update packages are signed; the updater verifies the signature
-  before installing.
-- **AI on/off switch.** A new "Enable AI" toggle in Settings → AI (on by
-  default). Turning it off hides every AI surface: the title-bar AI button,
-  the AI side panel, the formatting-toolbar sparkle, Alt+J, and the command
-  palette entry.
-- **Shimmery AI button.** The title-bar AI button now carries the familiar
-  sparkle icon with a subtle shimmer animation.
-- **Visual table editor.** A floating toolbar appears when the caret is inside a
-  Markdown table, with buttons to insert or delete rows and columns, set
-  per-column alignment, and tidy (re-align) the layout. Built on a pure,
-  fully tested table model, so editing a table no longer means hand-aligning pipes.
+- **Fullscreen mode (F11)** for distraction-free writing on Windows, Linux, and
+  macOS. The title bar stays visible so there is always an obvious way out, with
+  a one-time hint. Also available from the command palette.
+- **Automatic updates.** Paperling checks for new versions on launch and offers
+  a one-click update when a newer version is available. Update packages are
+  signed and verified before installing.
+- **Enable AI toggle** (Settings → AI). Turning AI off hides every AI surface:
+  the title-bar button, the side panel, the toolbar sparkle, Alt+J, and the
+  command palette entry.
+- **Visual table editor.** A floating toolbar appears inside a Markdown table to
+  insert or delete rows and columns, set per-column alignment, and re-align the
+  layout.
+- **Chemistry notation in math.** KaTeX now renders `\ce{...}` and `\pu{...}`
+  (mhchem), with a `/chem` slash command to insert a starter snippet.
+- **Document statistics** dialog — words, characters, sentences, paragraphs,
+  headings, links, images, code blocks, and reading time.
+- **Word wrap** and **spell check** toggles in Settings → Editor.
+- **Selected word count** in the status bar, plus command-palette actions to
+  reveal the current file in its folder and copy its path.
 
 ### Changed
 
-- **Cleaner "What's new" in the update popup.** The updater now shows the
-  release's actual changes as a tidy, scrollable list instead of a block of raw
-  text. Release notes are sourced automatically from this changelog at build
-  time, and links open in your browser rather than inside the app.
-- **Relicensed to Apache 2.0.** MarkLite moved from the previous custom
-  non-commercial terms to the Apache License 2.0: free for both personal and
-  commercial use, with an explicit patent grant. See `LICENSE` and `NOTICE`.
-- **Sharper positioning.** The hero, README, and site now lead with what is
-  genuinely different (no-setup single-file editing, a free bring-your-own-model
-  AI that proposes edits as accept-or-reject diffs, live math and chemistry)
-  instead of generic "minimal / lightweight" claims.
+- **Relicensed to Apache 2.0** — free for personal and commercial use, with an
+  explicit patent grant.
+- **Works fully offline.** All fonts and the icon set are now bundled, so the
+  editor looks identical online and offline, and HTML export no longer depends
+  on Google Fonts.
+- **Book-style math typography** — display equations are centered with proper
+  spacing and scroll horizontally on narrow screens instead of overflowing.
 
 ### Fixed
 
-- **List bullets and numbers now render in the preview.** Tailwind v4's base
-  reset had stripped the list markers, leaving lists indented but marker-less.
-- **Ctrl+S (and Ctrl+O / N / E) work with CapsLock on.** An unshifted Ctrl+S
-  reports `e.key === "S"`, which previously fell through and did nothing.
-- **Heading anchor links give feedback.** Clicking the link icon next to a
-  heading now copies a section link and shows a checkmark, instead of appearing
-  to do nothing when the heading is already at the top of the view.
-- **Alt+J opens the AI side panel.** With no text selected it now opens the
-  docked AI panel (previously it only opened the inline selection bubble); with
-  a selection it still opens selection-assist in place.
-
-### Fixed — Click after scroll lands on the right line
-
-- Scrolling and immediately clicking (or double-clicking) used to land
-  the caret on a line one row off from where it visibly looked like
-  the click was — typing then added text to the "wrong" line, which
-  was confusing. The cause: the highlight overlay's `scrollTop` was
-  synced to the textarea via a rAF loop, which catches up on the NEXT
-  frame after the scroll. If you clicked inside that 16-ms window, the
-  textarea had already placed the caret at the new position but the
-  overlay was still painting the old one, so the visible glyph at the
-  click coordinate didn't match the textarea's text-position mapping.
-- Replaced the rAF loop with a synchronous `onScroll` handler on the
-  textarea. The overlay's scrollTop is now updated in the same turn
-  as the scroll event, so the two layers stay in lockstep and clicks
-  always land where the user expects. Also frees the main thread from
-  a 60 Hz rAF callback that was firing whether the editor was idle or
-  not.
-
-### Improved — Smaller per-keystroke recompute
-
-- `updateCursorPosition` ran twice per keystroke (selectionchange AND
-  keyup both fire). The downstream setStates already bailed via
-  `Object.is`, but the substring + split work itself ran twice. Now
-  caches the last reported (start, end) range and short-circuits at
-  the top when nothing's moved.
-
-### Improved — Cold start and runtime performance
-
-- **Bundle main chunk: 1.08 MB → 282 kB (~74% smaller).** Welcome screen no
-  longer ships the markdown rendering pipeline, jspdf/html2canvas, the
-  command palette, settings, stats dialog, file explorer, outline panel,
-  shortcuts cheatsheet, or the unsaved-changes dialog. Each is its own
-  chunk, fetched the moment its surface mounts. `vite manualChunks`
-  groups React and the markdown stack into stable vendor chunks the
-  WebView2 disk cache can hold across upgrades.
-- **First file open: instant.** A `requestIdleCallback` after the welcome
-  screen settles starts the markdown chunk download in the background, so
-  by the time the user opens a file the bundle is already in cache.
-- **Typing path: less work per keystroke.** Command-palette heading scan
-  no longer runs on every typing pause — only while the palette is
-  actually open. App's per-keystroke `content.split("\n")` for
-  `lineCount` moved into MarkdownPreview where it's actually used (one
-  fewer full-document scan per keystroke). StatusBar, TitleBar,
-  MarkdownPreview, and CodeEditor wrapped in `React.memo` with stable
-  callbacks so caret-only re-renders bail out of reconciliation.
-- **Highlight cache: drop LRU thrash.** The CodeEditor's per-line
-  highlight cache used to do `delete + set` on every cached line per
-  render to maintain LRU order — ~20 k Map mutations per keystroke on a
-  10 k-line file. The pruning that actually mattered ("is this line
-  still in the doc?") doesn't depend on order, so we just lookup-only on
-  hit and let the rare hard-cap fallback evict FIFO.
-
-### Added — Chemistry notation in math
-
-- KaTeX now loads the **mhchem** contrib alongside the rest of the math
-  bundle, so `\ce{...}` and `\pu{...}` render in the preview.
-  This unlocks textbook-grade chemistry: balanced equations, ions,
-  isotopes, oxidation states, arrows, and Kröger-Vink defect notation
-  (e.g. `$\ce{2 Fe^x_{Fe} + O^x_{O} -> 2 Fe'_{Fe} + V_{O}^{**} + 1/2 O2 ^}$`).
-  The math-detection regex now also picks up bare `\ce{` / `\pu{`,
-  so chemistry-only documents trigger the lazy load even without
-  `$` delimiters. New `/chem` slash command inserts a starter snippet.
-
-### Improved — Book-style math typography
-
-- Display equations are centered with proper vertical breathing room and
-  scroll horizontally on narrow viewports instead of overflowing the
-  reading column. KaTeX glyphs no longer inherit the global `code` border
-  /background, and equation tags pick up the muted-text colour for a
-  printed-textbook feel.
-
-### Fixed — Caret drifts off the rendered glyph after scrolling
-
-- The CodeEditor stacks a transparent `<textarea>` on top of a styled
-  highlight overlay; alignment relies on both layers wrapping at the
-  same column. Once the document grew past the viewport the textarea
-  sprouted a vertical scrollbar that quietly ate ~10 px of its content
-  area, while the overlay kept its full width. With word-wrap on, the
-  two layers wrapped at different columns and the caret started landing
-  a character or two off the rendered text after every scroll. Both
-  layers now reserve a fixed scrollbar gutter (`scrollbar-gutter: stable`),
-  and the overlay's own scrollbar is hidden visually so only the
-  textarea's remains user-facing.
-
-### Improved — Editor performance on large documents
-
-- Typing into a 5 k+ line markdown file used to feel "sticky" because
-  the highlight overlay mounted every line as a `<div>` and React's
-  reconciler walked the lot on every keystroke. The overlay now
-  virtualizes: only the lines visible in the viewport (plus a 40-line
-  buffer) render, with fixed-height spacers above and below preserving
-  scroll-height parity with the textarea so caret alignment is intact.
-  Re-renders only fire when the visible window shifts by more than half
-  the buffer, so smooth scrolling no longer thrashes setState.
-  Word-wrap mode and small docs (under 400 lines) keep the previous
-  full-render path. Per-line wrapper styles are also hoisted to module
-  scope and the non-virtualized list is wrapped in `React.memo` so
-  unchanged lines short-circuit prop diffing.
-
-### Fixed — Webview accelerator collision
-
-- AI assist shortcut now also responds to **Alt+J**. On Windows, WebView2
-  treats `Ctrl+J` as a "browser accelerator" for the built-in Downloads
-  UI — the page never sees the keydown, so `e.preventDefault()` can't
-  rescue it. Alt+J skips that path entirely. macOS (WKWebView) and Linux
-  (WebKitGTK) keep `Ctrl+J` working; the cheatsheet detects the platform
-  and shows the right one. A capture-phase `keydown` listener also
-  preventDefaults Ctrl+J app-wide, so on platforms where the page does
-  see the event the host webview's default action is suppressed
-  regardless of which element is focused.
-
-### Fixed — Security
-
-- `read_file` / `save_file` refuse documents above 50 MB. Stat happens before
-  the read so an oversized file fails fast with a clear "File too large"
-  toast instead of pulling hundreds of MB of UTF-8 into the webview while
-  the UI freezes.
-- `save_image` refuses payloads above 25 MB and now enforces an extension
-  whitelist (`png`, `jpg`, `jpeg`, `gif`, `webp`, `bmp`, `svg`,
-  case-insensitive). A caller can no longer drop a `.exe` / `.dll` / `.lnk`
-  into the user's documents folder under cover of the markdown image-paste
-  flow. Tests cover the new rejections plus all whitelisted extensions.
-- AI requests get a 60 s wall-clock timeout (composed with the user's
-  existing `AbortController`) and the response is capped at 200 KB. A
-  stuck local llama.cpp or a runaway model can no longer hang the AI
-  bubble forever or paste megabytes of text into the editor.
-- Tauri CSP further tightened: `object-src 'none'`, `base-uri 'self'`,
-  `form-action 'none'`, `frame-ancestors 'none'`. Asset protocol disabled
-  (it was scoped to `**` but the app loads images via plugin-fs + blob
-  URLs and never touches `asset:`), and `asset:`/`https://asset.localhost`
-  dropped from `default-src` and `img-src`.
-
-### Added
-
-- Status bar shows a "selected / total" word count when the editor has a
-  non-empty selection; reverts to total when the selection collapses.
-- Welcome screen: a Settings button next to Open/New, a "Clear all" link in
-  the Recent header, and a visible drag highlight (dashed accent outline +
-  hover background) so the drop target is obvious.
-
-### Fixed — UX
-
-- File-operation errors now surface the actual message from Rust
-  ("File too large", "Image filename must end in …") instead of the
-  generic "Failed to open file" / "Failed to save image. Please try again."
-  toasts. Restore-on-launch surfaces TooLarge specifically so a user whose
-  yesterday-doc grew above the cap gets an explanation instead of the
-  editor silently opening to a blank welcome screen.
-- Welcome screen: per-row Remove button on a Recent file used to be a
-  `<span role="button">` nested inside the row's `<button>`. That's invalid
-  HTML and could double-fire — clicking Remove sometimes also reopened the
-  file. Split into two sibling buttons.
+- List bullets and numbers render in the preview again.
+- Ctrl+S / Ctrl+O / Ctrl+N / Ctrl+E now work with CapsLock on.
+- Clicking a heading's anchor link copies a section link and confirms with a
+  checkmark.
+- Alt+J reliably opens the AI panel on Windows, where WebView2 had reserved
+  Ctrl+J for its Downloads UI.
+- The caret no longer drifts off the text after scrolling large documents.
+- Clearer file-operation error messages (for example "File too large") instead
+  of generic failures.
+- Security hardening across file, image, AI, and wikilink handling: size limits,
+  filename and path-traversal sanitizing, an AI request timeout and response
+  cap, and a tightened Content Security Policy.
 
 ### Removed
 
-- Dead `localStorage` helpers `getFocusMode` / `setFocusMode` /
-  `getAutoSave` / `setAutoSave`. Both features were retired in 0.6.1 and
-  nothing reads these keys anymore.
+- Retired dead auto-save / focus-mode storage helpers left over from 0.6.1.
 
-### Changed — Offline support
+### Performance
 
-- All UI fonts (Inter, JetBrains Mono, Merriweather, Lora, Source Serif 4,
-  Fira Sans) and the Material Symbols Outlined icon font are now bundled
-  with the app via `@fontsource/*` and `material-symbols`. The
-  `<link rel="stylesheet" href="https://fonts.googleapis.com/...">`
-  tags have been removed from `index.html`, so the editor renders identically
-  online and offline — no more "icon shows as text" while waiting for the CDN
-  on a slow connection.
-- Tauri CSP tightened: `style-src` no longer whitelists
-  `https://fonts.googleapis.com` and `font-src` no longer whitelists
-  `https://fonts.gstatic.com`. Fonts may now load only from `self` (the
-  bundled woff2 files) plus `data:` URLs (used by some embedded SVG icons).
-- HTML export drops the Google Fonts `@import`. The export now relies on
-  font-family fallbacks (system sans/serif/mono) so exporting succeeds
-  offline and the resulting file renders predictably anywhere.
-
-### Added
-
-- Word wrap toggle for the editor (Settings → Editor; default on). Wrapped
-  mode hides the line-number gutter so per-source-line numbers don't drift
-  out of alignment with wrapped visual rows.
-- Spell check toggle for the editor (Settings → Editor; default off).
-- Document statistics dialog (command palette → "Show document statistics"):
-  words, characters, sentences, paragraphs, headings, links, images, code
-  blocks, and reading time. Frontmatter and code blocks are excluded from
-  prose counts.
-- Command palette: "Reveal in folder" and "Copy file path" actions for the
-  current file.
-
-### Fixed — Security
-
-- Wikilink resolver now rejects targets containing `..`, path separators,
-  drive letters, or NUL bytes. A crafted document can no longer load files
-  outside the current folder.
-- Rust `save_image` command sanitizes the supplied filename to a bare
-  basename, preventing escape from the `images/` subdirectory. Backed by
-  unit tests covering common traversal payloads.
-- External markdown links (`http(s)://`, `mailto:`) now open in the system
-  default handler via `tauri-plugin-opener` instead of navigating the
-  webview itself; `rel="noopener noreferrer"` is also set as a fallback.
-- AI assist refuses non-`http(s)` endpoints; the Settings modal flags an
-  invalid endpoint inline so users get fast feedback before triggering a
-  request.
-- Settings modal makes it explicit that the AI API key is stored
-  unencrypted in localStorage.
-
-### Fixed — UX
-
-- AI assist bubble repositions when it would overflow the right or bottom
-  edge of the viewport, flipping above the anchor when there is no room
-  below.
+- Faster cold start and a much smaller initial bundle — the welcome screen no
+  longer loads the markdown, export, or dialog code until it is needed — plus
+  smoother typing and scrolling on large documents.
 
 ## [0.6.1] - 2026-04-30
 

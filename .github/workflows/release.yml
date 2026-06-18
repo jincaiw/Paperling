@@ -60,10 +60,17 @@ jobs:
             # Update Cargo.toml version
             sed -i "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" src-tauri/Cargo.toml
 
+            # Roll the changelog: close [Unreleased] into a dated section for
+            # this version and open a fresh, empty [Unreleased] above it. This
+            # is what keeps each release's "What's new" scoped to just its own
+            # changes instead of the whole accumulated history.
+            RELEASE_DATE=$(date -u +%Y-%m-%d)
+            sed -i "0,/^## \[Unreleased\]/s//## [Unreleased]\n\n## [$NEW_VERSION] - $RELEASE_DATE/" CHANGELOG.md
+
             # Commit the version bump
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add src-tauri/tauri.conf.json package.json src-tauri/Cargo.toml
+            git add src-tauri/tauri.conf.json package.json src-tauri/Cargo.toml CHANGELOG.md
             git commit -m "chore: bump version to $NEW_VERSION [skip ci]"
             git push
 
@@ -83,9 +90,14 @@ jobs:
         id: notes
         run: |
           VERSION="${{ steps.bump.outputs.version }}"
-          # Print the lines of the first "## [...]" section, excluding the two
-          # heading lines that bound it.
-          CHANGES=$(awk '/^## \[/{c++; next} c==1' CHANGELOG.md)
+          # Print only THIS version's section — the lines between its
+          # "## [VERSION]" heading and the next "## [" heading — so the release
+          # notes are scoped to just this release, not the whole history.
+          CHANGES=$(awk -v ver="## [$VERSION]" '
+            index($0, ver) == 1 { f = 1; next }
+            f && /^## \[/ { exit }
+            f { print }
+          ' CHANGELOG.md)
           if [ -z "$(echo "$CHANGES" | tr -d '[:space:]')" ]; then
             CHANGES="A new version of Paperling is available."
           fi
