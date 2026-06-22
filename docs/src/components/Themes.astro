@@ -3,14 +3,12 @@ import { Image } from "astro:assets";
 import readerDark from "../assets/screenshots/reader-dark.png";
 import readerLight from "../assets/screenshots/reader-light.png";
 import readerPaper from "../assets/screenshots/reader-paper.png";
-import readerGithub from "../assets/screenshots/reader-github.png";
 import mascotPaint from "../assets/mascot/mascot-paint.png";
 
 const themes = [
   { id: "paper", label: "Paper", img: readerPaper, swatch: ["#f5f0e6", "#5c4033"] },
   { id: "dark", label: "Dark", img: readerDark, swatch: ["#0a0a0d", "#ffffff"] },
   { id: "light", label: "Light", img: readerLight, swatch: ["#ffffff", "#171717"] },
-  { id: "github", label: "GitHub", img: readerGithub, swatch: ["#ffffff", "#0969da"] },
 ];
 ---
 
@@ -34,7 +32,7 @@ const themes = [
         Not just another dark tool.
       </h2>
       <p class="mt-4 text-lg" style="color:var(--stage-muted)">
-        Dark, Light, a warm Paper mode, and a pixel-accurate GitHub theme, plus focus and typewriter
+        Dark, Light, a warm Paper mode, and a Dracula theme for night owls, plus focus and typewriter
         modes. Tap one and watch this whole section change with it.
       </p>
     </div>
@@ -90,7 +88,6 @@ const themes = [
   .stage-paper  { --stage-bg:#f5f0e6; --stage-fg:#2b2420; --stage-muted:#6f6149; --stage-line:#e3d8c2; }
   .stage-dark   { --stage-bg:#0a0a0d; --stage-fg:#f7f7fa; --stage-muted:#a7a7b4; --stage-line:#20202a; }
   .stage-light  { --stage-bg:#ffffff; --stage-fg:#171717; --stage-muted:#525252; --stage-line:#e5e5e5; }
-  .stage-github { --stage-bg:#ffffff; --stage-fg:#1f2328; --stage-muted:#656d76; --stage-line:#d0d7de; }
 
   .theme-tab {
     color: color-mix(in srgb, var(--stage-fg) 70%, transparent);
@@ -115,7 +112,7 @@ const themes = [
 
   function show(id: string) {
     if (stage) {
-      stage.classList.remove("stage-paper", "stage-dark", "stage-light", "stage-github");
+      stage.classList.remove("stage-paper", "stage-dark", "stage-light");
       stage.classList.add(`stage-${id}`);
     }
     tabs.forEach((t) => t.setAttribute("aria-pressed", t.dataset.themeTab === id ? "true" : "false"));

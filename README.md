@@ -8,14 +8,14 @@
 </p>
 
 <p align="center">
-  <strong>A no-setup Markdown editor</strong>: open a file and write, with live preview, math, chemistry, and diagrams as you type, plus an optional free AI that proposes edits you accept or reject inline. Built with Tauri, React, and TypeScript.
+  <strong>A no-setup Markdown reader and editor.</strong> Open any <code>.md</code> file and read it beautifully, edit with live preview (math, chemistry, and diagrams as you type), and use an optional free AI that proposes edits you accept or reject inline. No vaults, no plugins, no heavy app. Built with Tauri, React, and TypeScript.
 </p>
 
 <p align="center">
   <a href="https://github.com/Razee4315/Paperling/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Razee4315/Paperling?color=2ea043&label=download"></a>
   <a href="https://github.com/Razee4315/Paperling/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/Razee4315/Paperling/total?color=2ea043"></a>
   <a href="https://github.com/Razee4315/Paperling/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Razee4315/Paperling?style=flat"></a>
-  <img alt="Platforms" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-555">
+  <img alt="Platforms" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-555">
   <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-blue"></a>
   <img alt="Built with Tauri" src="https://img.shields.io/badge/built%20with-Tauri%20%2B%20Rust-FFC131">
 </p>
@@ -53,11 +53,11 @@ I wanted something you just open and write in: it renders Markdown beautifully w
 
 ### Four themes
 
-| Dark | Light |
-|:----:|:-----:|
-| <img src="images/theme-dark.png" width="420" alt="Paperling Dark theme"> | <img src="images/theme-light.png" width="420" alt="Paperling Light theme"> |
-| **Paper** | **GitHub** |
-| <img src="images/theme-paper.png" width="420" alt="Paperling Paper theme"> | <img src="images/theme-github.png" width="420" alt="Paperling GitHub theme"> |
+Dark, Light, Paper, and Dracula.
+
+| Dark | Light | Paper |
+|:----:|:-----:|:-----:|
+| <img src="images/theme-dark.png" width="280" alt="Paperling Dark theme"> | <img src="images/theme-light.png" width="280" alt="Paperling Light theme"> | <img src="images/theme-paper.png" width="280" alt="Paperling Paper theme"> |
 
 ### File explorer &amp; command palette
 
@@ -121,7 +121,7 @@ I wanted something you just open and write in: it renders Markdown beautifully w
 
 ### <img src="images/art/icon-theme-swatches.png" width="26" alt=""> Customization
 
-- **Four themes** — Dark, Light, Paper, GitHub
+- **Four themes** — Dark, Light, Paper, Dracula
 - **Five fonts** — Inter, Merriweather, Lora, Source Serif, Fira Sans
 - **Three font sizes**
 - **WCAG-friendly** — visible focus rings, `prefers-reduced-motion` respected
@@ -137,8 +137,16 @@ Download the latest release from the [Releases](https://github.com/Razee4315/Pap
 
 ### Available Formats
 
-- **Windows**: `.msi` installer or `.exe` portable
-- **Linux**: `.deb`, `.rpm`, or `.AppImage`
+| Platform | Formats |
+|----------|---------|
+| **Windows** | `.msi` installer · `.exe` (NSIS) installer |
+| **macOS** | `.dmg` (Apple Silicon) |
+| **Linux** | `.AppImage` · `.deb` · `.rpm` |
+
+> **Note:** builds aren't code-signed yet, so Windows SmartScreen or macOS
+> Gatekeeper may warn on first launch. On Windows choose *More info → Run anyway*;
+> on macOS right-click the app and choose *Open*. Auto-update packages are signed
+> and verified before installing.
 
 ## Development
 
