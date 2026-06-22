@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTheme } from '../context/ThemeContext';
+import { useDropdownKeyboard } from '../hooks/useDropdownKeyboard';
 import iconExportPdf from '../assets/mascot/icon-export-pdf.png';
 import iconPaperPlane from '../assets/mascot/icon-paper-plane.png';
 
@@ -29,6 +30,8 @@ export function ExportMenu({ fileName, getExportHtml, onSuccess, onError }: Expo
     const [isExporting, setIsExporting] = useState(false);
     const { theme, font, fontSize } = useTheme();
     const menuRef = useRef<HTMLDivElement>(null);
+    const panelRef = useRef<HTMLDivElement>(null);
+    const onMenuKeyDown = useDropdownKeyboard(isOpen, panelRef, () => setIsOpen(false));
 
     // Close menu when clicking outside or pressing Escape
     useEffect(() => {
@@ -90,7 +93,9 @@ export function ExportMenu({ fileName, getExportHtml, onSuccess, onError }: Expo
                 aria-haspopup="true"
                 className={`btn-press flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[var(--bg-hover)] transition-colors text-xs ${
                     disabled
-                        ? 'opacity-40 cursor-not-allowed text-[var(--text-muted)]'
+                        // Muted color at full opacity rather than opacity-40 on top
+                        // of muted — keeps the disabled label readable (a11y).
+                        ? 'cursor-not-allowed text-[var(--text-muted)]'
                         : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
                 title="Export document"
@@ -110,7 +115,7 @@ export function ExportMenu({ fileName, getExportHtml, onSuccess, onError }: Expo
 
             {/* Simple Dropdown Menu */}
             {isOpen && !disabled && (
-                <div role="menu" aria-label="Export formats" className="absolute left-0 top-full mt-1 w-40 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg shadow-xl overflow-hidden z-[70] animate-fade-in-down">
+                <div ref={panelRef} onKeyDown={onMenuKeyDown} role="menu" aria-label="Export formats" className="absolute left-0 top-full mt-1 w-40 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg shadow-xl overflow-hidden z-[70] animate-fade-in-down">
                     <button
                         role="menuitem"
                         onClick={() => handleExport('html')}

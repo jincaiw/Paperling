@@ -12,7 +12,7 @@ import { WelcomeScreen } from "./components/WelcomeScreen";
 import { CodeEditor } from "./components/CodeEditor";
 import { StatusBar } from "./components/StatusBar";
 import { ModeToggle, type ViewMode } from "./components/ModeToggle";
-import { Toast } from "./components/Toast";
+import { ToastStack } from "./components/Toast";
 import { SplitDivider } from "./components/SplitDivider";
 import { createScrollSync } from "./utils/scrollSync";
 import { type PaletteCommand } from "./components/CommandPalette";
@@ -205,7 +205,7 @@ function AppContent() {
   const [previewLine, setPreviewLine] = useState(1);
 
   // Toast notifications (state + show/hide helpers live in a hook).
-  const { toast, showToast, hideToast } = useToast();
+  const { toasts, showToast, dismissToast } = useToast();
 
   // Export HTML content ref - captures from visible preview
   const previewRef = useRef<HTMLDivElement>(null);
@@ -1565,12 +1565,7 @@ function AppContent() {
       )}
 
       {/* Toast notifications */}
-      <Toast
-        message={toast.message}
-        isVisible={toast.isVisible}
-        onHide={hideToast}
-        type={toast.type}
-      />
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }

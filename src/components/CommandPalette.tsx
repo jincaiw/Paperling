@@ -21,6 +21,61 @@ interface CommandPaletteProps {
     onClose: () => void;
 }
 
+/** Indices in `haystack` that `needle` matches, mirroring fuzzyScore's logic
+ *  (substring first, then subsequence). Returns null when there's no match, so
+ *  callers can fall back to the plain label. */
+function matchIndices(needle: string, haystack: string): number[] | null {
+    if (!needle) return null;
+    const n = needle.toLowerCase();
+    const h = haystack.toLowerCase();
+    const sub = h.indexOf(n);
+    if (sub !== -1) {
+        return Array.from({ length: n.length }, (_, i) => sub + i);
+    }
+    const out: number[] = [];
+    let hi = 0;
+    for (let ni = 0; ni < n.length; ni++) {
+        const found = h.indexOf(n[ni], hi);
+        if (found === -1) return null;
+        out.push(found);
+        hi = found + 1;
+    }
+    return out;
+}
+
+/** Render `label` with the characters matched by `query` accented, so it's
+ *  obvious why a result ranked where it did. Coalesces adjacent matched/plain
+ *  characters into runs to keep the node count down. */
+function highlightLabel(label: string, query: string): React.ReactNode {
+    const q = query.trim();
+    if (!q) return label;
+    const idx = matchIndices(q, label);
+    if (!idx) return label;
+    const matched = new Set(idx);
+    const parts: React.ReactNode[] = [];
+    let buf = "";
+    let bufMatched = matched.has(0);
+    const flush = (key: number) => {
+        if (!buf) return;
+        parts.push(
+            bufMatched
+                ? <mark key={key} className="bg-transparent text-[var(--accent)] font-semibold">{buf}</mark>
+                : <span key={key}>{buf}</span>
+        );
+        buf = "";
+    };
+    for (let i = 0; i < label.length; i++) {
+        const m = matched.has(i);
+        if (i > 0 && m !== bufMatched) {
+            flush(i);
+            bufMatched = m;
+        }
+        buf += label[i];
+    }
+    flush(label.length);
+    return parts;
+}
+
 /** Tiny fzf-style ranker. Returns -1 for no match, otherwise a score (lower = better). */
 function fuzzyScore(needle: string, haystack: string): number {
     if (!needle) return 0;
@@ -198,7 +253,7 @@ export function CommandPalette({ isOpen, items, onClose }: CommandPaletteProps) 
                                                 <span className={`material-symbols-outlined text-[18px] shrink-0 ${active ? "text-[var(--accent)]" : "text-[var(--text-secondary)]"}`}>
                                                     {cmd.icon ?? "chevron_right"}
                                                 </span>
-                                                <span className="flex-1 min-w-0 text-sm text-[var(--text-primary)] truncate">{cmd.label}</span>
+                                                <span className="flex-1 min-w-0 text-sm text-[var(--text-primary)] truncate">{highlightLabel(cmd.label, query)}</span>
                                                 {cmd.hint && (
                                                     <span className="text-[11px] text-[var(--text-muted)] tabular-nums truncate ml-2 shrink-0">
                                                         {cmd.hint}

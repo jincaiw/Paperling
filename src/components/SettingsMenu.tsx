@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTheme, Theme, FontFamily, FontSize } from '../context/ThemeContext';
+import { useDropdownKeyboard } from '../hooks/useDropdownKeyboard';
 
 const themes: { id: Theme; name: string; colors: [string, string]; textColor: string; icon?: string }[] = [
     { id: 'dark', name: 'Dark', colors: ['#0a0a0a', '#141414'], textColor: '#ffffff' },
@@ -27,6 +28,8 @@ export function SettingsMenu() {
     const [isOpen, setIsOpen] = useState(false);
     const { theme, setTheme, font, setFont, fontSize, setFontSize } = useTheme();
     const menuRef = useRef<HTMLDivElement>(null);
+    const panelRef = useRef<HTMLDivElement>(null);
+    const onMenuKeyDown = useDropdownKeyboard(isOpen, panelRef, () => setIsOpen(false));
 
     // Close menu when clicking outside or pressing Escape
     useEffect(() => {
@@ -70,7 +73,7 @@ export function SettingsMenu() {
                 ties); the max-height lets the menu scroll on short screens
                 instead of running underneath it. */}
             {isOpen && (
-                <div role="menu" aria-label="Settings" className="absolute right-0 top-full mt-2 w-80 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl shadow-2xl overflow-y-auto max-h-[calc(100vh-5rem)] z-[70] animate-fade-in-down">
+                <div ref={panelRef} onKeyDown={onMenuKeyDown} role="menu" aria-label="Settings" className="absolute right-0 top-full mt-2 w-80 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl shadow-2xl overflow-y-auto max-h-[calc(100vh-5rem)] z-[70] animate-fade-in-down">
                     {/* Theme Section */}
                     <div className="p-4 border-b border-[var(--border)]">
                         <div className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">
