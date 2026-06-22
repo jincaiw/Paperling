@@ -4,6 +4,14 @@ on:
   push:
     branches:
       - main
+    # Docs, screenshots, and markdown don't ship inside the app, so a change to
+    # them shouldn't cut a new release (rebuilding identical binaries under a
+    # bumped version). Code changes still trigger a release as before.
+    paths-ignore:
+      - "docs/**"
+      - "images/**"
+      - "**/*.md"
+      - ".github/workflows/deploy-docs.yml"
   workflow_dispatch:
 
 permissions:
