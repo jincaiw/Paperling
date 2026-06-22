@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.35] - 2026-06-22
+
 ### Added
 
 - The Export and Settings dropdown menus are now fully keyboard-operable: focus
