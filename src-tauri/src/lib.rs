@@ -1,4 +1,5 @@
 mod commands;
+mod pdf;
 
 use commands::{read_file, save_file, get_file_info, list_directory_files, save_image, read_image_file, get_ai_key, set_ai_key};
 use tauri::{Manager, Emitter};
@@ -81,7 +82,8 @@ pub fn run() {
             read_image_file,
             get_ai_key,
             set_ai_key,
-            get_cli_file
+            get_cli_file,
+            pdf::export_pdf
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

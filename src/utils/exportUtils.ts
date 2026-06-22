@@ -1,6 +1,7 @@
 import { Theme, FontFamily, FontSize } from '../context/ThemeContext';
 import { save } from '@tauri-apps/plugin-dialog';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
+import { invoke } from '@tauri-apps/api/core';
 
 // Theme color definitions for export
 const themeColors: Record<Theme, Record<string, string>> = {
@@ -559,10 +560,15 @@ function printHtmlDocument(html: string): Promise<void> {
     });
 }
 
-// Export to PDF via the webview's print engine (see the block comment above).
-// The theme argument is intentionally ignored: a shared/printed PDF must be
-// legible on white paper, so we always render the light theme. The on-screen
-// HTML export still honours the chosen theme.
+// Export to PDF. The theme argument is intentionally ignored: a shared/printed
+// PDF must be legible on white paper, so we always render the light theme. The
+// on-screen HTML export still honours the chosen theme.
+//
+// On Windows we ask once where to save (like HTML export) and hand the HTML to
+// the Rust `export_pdf` command, which renders it in a hidden WebView2 and
+// writes a real PDF via the native PrintToPdf engine — no print dialog. Other
+// platforms fall back to the webview's print pipeline (`window.print()`), the
+// only cross-platform route to a vector PDF without bundling a headless browser.
 export async function exportToPDF(
     htmlContent: string,
     fileName: string,
@@ -581,6 +587,20 @@ export async function exportToPDF(
     // anchor icons) and inlines blob: images as data: URIs.
     const cleaned = await prepareExportHtml(htmlContent);
     const fullHTML = generateHTML(cleaned, title, 'light', font, fontSize, true);
+
+    const isWindows =
+        typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent);
+
+    if (isWindows) {
+        const filePath = await save({
+            defaultPath: `${title}.pdf`,
+            filters: [{ name: 'PDF', extensions: ['pdf'] }],
+        });
+        // Dialog cancelled — nothing to do.
+        if (!filePath) return;
+        await invoke('export_pdf', { html: fullHTML, path: filePath });
+        return;
+    }
 
     await printHtmlDocument(fullHTML);
 }

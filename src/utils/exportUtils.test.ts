@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from "vitest";
 // under test (generateHTML, prepareExportHtml) never call these.
 vi.mock("@tauri-apps/plugin-dialog", () => ({ save: vi.fn() }));
 vi.mock("@tauri-apps/plugin-fs", () => ({ writeTextFile: vi.fn() }));
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { generateHTML, prepareExportHtml } from "./exportUtils";
 

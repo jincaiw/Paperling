@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **PDF export now saves directly.** On Windows, "Export → PDF" asks where to
+  save and writes the file straight away, instead of opening the system print
+  dialog. The PDF keeps selectable text and working links.
+
 ## [1.0.33] - 2026-06-18
 
 ## [1.0.32] - 2026-06-18

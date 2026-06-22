@@ -43,3 +43,10 @@ tauri-plugin-mcp-bridge = "0.11"
 [target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+
+# Silent "Save as PDF" export: render the document in a hidden WebView2 and call
+# its native PrintToPdf (no OS print dialog). Versions track what wry/tauri
+# already resolve so we don't pull a second copy of the Windows bindings.
+[target."cfg(windows)".dependencies]
+webview2-com = "0.38"
+windows = "0.61"
