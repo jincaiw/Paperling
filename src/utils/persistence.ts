@@ -29,7 +29,9 @@ const KEY_LAST_FILE = "paperling:lastFile";
 const KEY_VIEW_MODE = "paperling:viewMode";
 const KEY_SPLIT_RATIO = "paperling:splitRatio";
 
-const MAX_RECENT = 10;
+// Multi-file/tab workflows make 10 feel tight; 25 keeps the palette's recents
+// useful without unbounded growth.
+const MAX_RECENT = 25;
 
 const safeGet = <T>(key: string, fallback: T): T => {
     try {
@@ -72,6 +74,31 @@ export const clearRecentFiles = (): void => safeSet(KEY_RECENT_FILES, []);
 
 export const getLastFile = (): string | null => safeGet<string | null>(KEY_LAST_FILE, null);
 export const setLastFile = (path: string | null): void => safeSet(KEY_LAST_FILE, path);
+
+// Full multi-tab session, so a relaunch reopens every tab the user had — not
+// just the single last file. Only files with a path are stored (untitled
+// buffers have no content persisted here); `activeIndex` points into `tabs`.
+// getLastFile stays as a migration fallback for sessions saved before this. TABS-07.
+const KEY_SESSION = "paperling:session";
+export interface SessionTab {
+    path: string;
+    /** 1-based caret/scroll line to restore. */
+    cursorLine?: number;
+}
+export interface SessionState {
+    tabs: SessionTab[];
+    activeIndex: number;
+}
+export const getSession = (): SessionState | null => {
+    const s = safeGet<SessionState | null>(KEY_SESSION, null);
+    if (!s || !Array.isArray(s.tabs)) return null;
+    // Defend against a malformed/hand-edited value.
+    const tabs = s.tabs.filter((t): t is SessionTab => !!t && typeof t.path === "string");
+    if (tabs.length === 0) return null;
+    const activeIndex = Number.isInteger(s.activeIndex) ? Math.min(Math.max(0, s.activeIndex), tabs.length - 1) : 0;
+    return { tabs, activeIndex };
+};
+export const setSession = (s: SessionState | null): void => safeSet(KEY_SESSION, s);
 
 export const getSavedViewMode = (): "preview" | "code" | "split" =>
     safeGet<"preview" | "code" | "split">(KEY_VIEW_MODE, "preview");

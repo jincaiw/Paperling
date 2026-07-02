@@ -77,6 +77,8 @@ import {
   initAIKey,
   getLastFile,
   getSavedViewMode,
+  getSession,
+  setSession,
   getSpellCheck,
   getSplitRatio,
   getToolbarEnabled,
@@ -94,10 +96,19 @@ import {
   setWordWrap,
 } from "./utils/persistence";
 import { getAutoSave } from "./utils/persistence";
-import { pickBootFile } from "./utils/boot";
 import { resolveRelativePath } from "./utils/resolveRelativePath";
+import { errMessage } from "./utils/errors";
 import { TabBar, type TabBarItem } from "./components/TabBar";
-import { findTabByPath, nextActiveAfterClose, type TabState } from "./utils/tabsModel";
+import { TabContextMenu } from "./components/TabContextMenu";
+import {
+  findTabByPath,
+  nextActiveAfterClose,
+  nextUntitledName,
+  findReusableUntitledTab,
+  computeTabLabels,
+  moveTab,
+  type TabState,
+} from "./utils/tabsModel";
 import { countSourceWords, countWords } from "./utils/documentStats";
 import { Tour } from "./components/Tour";
 import { PreviewFindBar } from "./components/PreviewFindBar";
@@ -157,6 +168,11 @@ function AppContent() {
   // the snapshots of every open file (incl. the active one). TABS-01.
   const [tabs, setTabs] = useState<TabState[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  // Bumped on every genuine document swap (tab switch, file open, new file) so
+  // the editor can reset its undo history and Ctrl+Z can't reach into the
+  // previously-shown document. See CodeEditor's docSwapId effect. TABS-03.
+  const [docSwapId, setDocSwapId] = useState(0);
+  const bumpDocSwap = useCallback(() => setDocSwapId((n) => n + 1), []);
   const [splitRatio, setSplitRatioState] = usePersistedState<number>(getSplitRatio, setSplitRatio);
   const [aiConfig, setAiConfigState] = useState(() => getAIConfig());
   const [aiEnabled, setAiEnabledState] = usePersistedState<boolean>(getAIEnabled, setAIEnabled);
@@ -179,6 +195,8 @@ function AppContent() {
   // Unsaved-changes dialog for window close (Alt+F4, taskbar close, the title
   // bar X). The Tauri close-requested handler below intercepts ALL of them.
   const [showUnsavedBeforeClose, setShowUnsavedBeforeClose] = useState(false);
+  // Pending dirty-tab close, awaiting the Save/Discard/Cancel dialog. TABS-05.
+  const [closeTabPrompt, setCloseTabPrompt] = useState<{ id: string; fileName: string } | null>(null);
   // Find bar over the reader-mode preview (Ctrl+F when mode === "preview").
   const [previewFindOpen, setPreviewFindOpen] = useState(false);
   // Autosave: save a moment after the user stops typing (Settings → Editor).
@@ -215,6 +233,15 @@ function AppContent() {
   const isDirty = content !== originalContent;
   // "Has a buffer" — true once a file is opened OR a blank Untitled buffer is started
   const hasFile = filePath !== null || fileName !== null;
+
+  // Keep the native window title (taskbar / Alt-Tab) in step with the active
+  // file and its dirty state, so two Paperling windows are distinguishable and
+  // a leading bullet flags unsaved work. Keyed on the dirty BOOLEAN (not raw
+  // content) so it doesn't fire an IPC call on every keystroke. TITLE-01.
+  useEffect(() => {
+    const title = fileName ? `${isDirty ? "• " : ""}${fileName} — Paperling` : "Paperling";
+    Window.getCurrent().setTitle(title).catch(() => {/* browser dev mode */});
+  }, [fileName, isDirty]);
 
   // First-run welcome tour: auto-start the first time a buffer is on screen.
   // The tour anchors to elements (mode toggle, editor panes) that only exist
@@ -284,6 +311,9 @@ function AppContent() {
   tabsRef.current = tabs;
   const activeTabIdRef = useRef<string | null>(null);
   activeTabIdRef.current = activeTabId;
+  // Stack of recently-closed tabs (path + caret line) for Ctrl+Shift+T. Only
+  // saved files are recoverable; untitled buffers aren't pushed. TABS-15.
+  const closedTabsRef = useRef<{ path: string; cursorLine?: number }[]>([]);
   const liveRef = useRef({ filePath, fileName, content, originalContent, fileSize });
   liveRef.current = { filePath, fileName, content, originalContent, fileSize };
   // The line we'd return to when this file is re-activated: the caret line while
@@ -300,6 +330,29 @@ function AppContent() {
     setActiveTabId(id);
   }, []);
   const newTabId = useCallback(() => `tab-${++tabSeqRef.current}`, []);
+
+  // Every open tab that has unsaved changes, reading the ACTIVE tab from live
+  // state (its stored snapshot lags until the next switch) and the rest from
+  // their snapshots. Used by the window-close guard so background tabs can't be
+  // discarded silently. TABS-04.
+  const collectDirtyTabs = useCallback(() => {
+    const live = liveRef.current;
+    const activeId = activeTabIdRef.current;
+    return tabsRef.current
+      .map((t) => {
+        const isActive = t.id === activeId;
+        return {
+          id: t.id,
+          filePath: isActive ? live.filePath : t.filePath,
+          fileName: isActive ? (live.fileName ?? "Untitled.md") : t.fileName,
+          content: isActive ? live.content : t.content,
+          dirty: isActive
+            ? live.content !== live.originalContent
+            : t.content !== t.originalContent,
+        };
+      })
+      .filter((t) => t.dirty);
+  }, []);
 
   // Write the live editor state back into the active tab's entry.
   const snapshotActiveTab = useCallback(() => {
@@ -321,6 +374,7 @@ function AppContent() {
   // Load a tab's stored snapshot into the live editor state.
   const applyTabToLive = useCallback((tab: TabState) => {
     setProposedDoc(null); // an AI review belongs to the file we're leaving
+    bumpDocSwap(); // new document → editor resets undo history. TABS-03.
     setFilePath(tab.filePath);
     setFileName(tab.fileName);
     setContent(tab.content);
@@ -335,7 +389,7 @@ function AppContent() {
       if (line > 1) window.dispatchEvent(new CustomEvent("paperling:goto-line", { detail: { line } }));
       else window.dispatchEvent(new CustomEvent("paperling:scroll-top"));
     });
-  }, []);
+  }, [bumpDocSwap]);
 
   // Switch to an already-open tab, snapshotting the current one first.
   const activateTab = useCallback((id: string) => {
@@ -365,6 +419,7 @@ function AppContent() {
     setIsLoading(true);
     try {
       const fileData = await invoke<FileData>("read_file", { path });
+      bumpDocSwap(); // new document → editor resets undo history. TABS-03.
       setFilePath(fileData.path);
       setFileName(fileData.name);
       setContent(fileData.content);
@@ -400,12 +455,12 @@ function AppContent() {
       // Surface the actual error from Rust so "File too large" / "File not
       // found" reaches the user instead of a generic message — without this,
       // hitting the new 50 MB cap looked exactly like a permission error.
-      const msg = typeof err === "string" ? err : (err as { message?: string })?.message;
+      const msg = errMessage(err);
       showToast(msg || "Failed to open file", "error");
     } finally {
       setIsLoading(false);
     }
-  }, [showToast, snapshotActiveTab, commitTabs, setActiveTab, newTabId]);
+  }, [showToast, snapshotActiveTab, commitTabs, setActiveTab, newTabId, bumpDocSwap]);
 
   // Settings flags above persist themselves via usePersistedState; the matching
   // setters (setSavedViewMode, setSplitRatio, …) are passed into that hook.
@@ -492,50 +547,87 @@ function AppContent() {
         // Browser dev mode / older backend without the command — restore only.
       }
 
-      const target = pickBootFile(cliFile, getLastFile());
-      if (!target.path) {
+      // Assemble the ordered list of paths to reopen and which one is active.
+      // Prefer the full saved session (TABS-07); fall back to the single
+      // lastFile for sessions saved before multi-tab restore existed.
+      const session = getSession();
+      const cursorByPath = new Map<string, number | undefined>();
+      let paths: string[] = [];
+      let activePath: string | null = null;
+      if (session) {
+        paths = session.tabs.map((t) => t.path);
+        session.tabs.forEach((t) => cursorByPath.set(t.path, t.cursorLine));
+        activePath = session.tabs[session.activeIndex]?.path ?? paths[0] ?? null;
+      } else {
+        const last = getLastFile();
+        if (last) { paths = [last]; activePath = last; }
+      }
+      // A CLI / double-clicked file is always the active tab, appended if new.
+      if (cliFile) {
+        if (!paths.includes(cliFile)) paths.push(cliFile);
+        activePath = cliFile;
+      }
+
+      if (paths.length === 0) {
         setBooting(false);
         return;
       }
 
-      try {
-        const fileData = await invoke<FileData>("read_file", { path: target.path });
-        setFilePath(fileData.path);
-        setFileName(fileData.name);
-        setContent(fileData.content);
-        setOriginalContent(fileData.content);
-        setFileSize(fileData.size);
-        knownMtimeRef.current = fileData.modified ?? 0;
-        // Bump the recents entry's timestamp to "now" so it sorts as
-        // most-recent, and persist as the session file so the next plain
-        // launch restores what the user actually had open.
-        addRecentFile(fileData.path, fileData.name);
-        setLastFile(fileData.path);
-        // Seed the first tab for the restored file. TABS-01.
-        const id = newTabId();
-        commitTabs([{
-          id, filePath: fileData.path, fileName: fileData.name,
-          content: fileData.content, originalContent: fileData.content,
-          fileSize: fileData.size, knownMtime: fileData.modified ?? 0,
-        }]);
-        setActiveTab(id);
-      } catch (err) {
-        const msg = typeof err === "string" ? err : (err as { message?: string })?.message || "";
-        if (target.source === "cli") {
-          // The user explicitly asked for this file — always tell them why
-          // it didn't open (moved/deleted/too large).
-          showToast(`Could not open file: ${msg || target.path}`, "error");
-        } else {
-          // Stale session file (moved / deleted) — fail quietly like before,
-          // except the TooLarge case, which deserves an explanation.
-          setLastFile(null);
-          if (/too large/i.test(msg)) {
-            showToast(`Could not restore last file: ${msg}`, "error");
+      // Read each file, skipping any that have gone missing / too large. The CLI
+      // file's failure is always surfaced (the user explicitly asked for it).
+      const loaded: TabState[] = [];
+      let activeId: string | null = null;
+      for (const p of paths) {
+        try {
+          const fd = await invoke<FileData>("read_file", { path: p });
+          const id = newTabId();
+          loaded.push({
+            id, filePath: fd.path, fileName: fd.name,
+            content: fd.content, originalContent: fd.content,
+            fileSize: fd.size, knownMtime: fd.modified ?? 0,
+            cursorLine: cursorByPath.get(p),
+          });
+          if (p === activePath) activeId = id;
+        } catch (err) {
+          const msg = errMessage(err);
+          if (cliFile && p === cliFile) {
+            showToast(`Could not open file: ${msg || p}`, "error");
+          } else if (/too large/i.test(msg)) {
+            showToast(`Could not restore "${p}": ${msg}`, "error");
           }
+          // Otherwise a stale session entry — drop it quietly.
         }
-      } finally {
-        setBooting(false);
       }
+
+      if (loaded.length === 0) {
+        setSession(null);
+        setLastFile(null);
+        setBooting(false);
+        return;
+      }
+      if (!activeId) activeId = loaded[0].id;
+      const activeTabData = loaded.find((t) => t.id === activeId)!;
+
+      bumpDocSwap(); // restored document → editor starts with clean undo history
+      commitTabs(loaded);
+      setActiveTab(activeId);
+      setFilePath(activeTabData.filePath);
+      setFileName(activeTabData.fileName);
+      setContent(activeTabData.content);
+      setOriginalContent(activeTabData.content);
+      setFileSize(activeTabData.fileSize);
+      knownMtimeRef.current = activeTabData.knownMtime;
+      addRecentFile(activeTabData.filePath!, activeTabData.fileName);
+      setLastFile(activeTabData.filePath);
+      // Restore the active tab's caret line once the editor has mounted.
+      const line = activeTabData.cursorLine ?? 1;
+      if (line > 1) {
+        window.setTimeout(
+          () => window.dispatchEvent(new CustomEvent("paperling:goto-line", { detail: { line } })),
+          150
+        );
+      }
+      setBooting(false);
     })();
     // Run only once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -571,7 +663,9 @@ function AppContent() {
     try {
       Window.getCurrent()
         .onCloseRequested((event) => {
-          if (contentRef.current !== originalContentRef.current) {
+          // Guard ALL tabs, not just the active one — a dirty background tab used
+          // to be discarded silently on Alt+F4 / taskbar close. TABS-04.
+          if (collectDirtyTabs().length > 0) {
             event.preventDefault();
             setShowUnsavedBeforeClose(true);
           }
@@ -586,6 +680,8 @@ function AppContent() {
       mounted = false;
       unlisten?.();
     };
+    // Registered once; collectDirtyTabs is stable (reads refs).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Close-dialog handlers. destroy() skips the close-requested event, so we
@@ -594,33 +690,30 @@ function AppContent() {
     Window.getCurrent().destroy().catch(() => {/* browser dev mode */});
   }, []);
 
+  // Save EVERY dirty tab, then close. An untitled tab prompts for a location;
+  // cancelling that (or any failed save) aborts the close so nothing is lost. TABS-04.
   const handleSaveAndCloseWindow = useCallback(async () => {
     setShowUnsavedBeforeClose(false);
-    const path = filePathRef.current;
-    if (path) {
-      try {
-        await invoke("save_file", { path, content: contentRef.current });
-      } catch (err) {
-        const msg = typeof err === "string" ? err : (err as { message?: string })?.message;
-        showToast(msg || "Failed to save file", "error");
-        return; // don't close on a failed save — the user would lose the buffer
+    for (const t of collectDirtyTabs()) {
+      let path = t.filePath;
+      if (!path) {
+        const selected = await save({
+          filters: [{ name: "Markdown", extensions: ["md"] }],
+          defaultPath: t.fileName,
+        });
+        if (!selected) return; // cancelled a save-as → keep the app open
+        path = selected;
       }
-    } else {
-      // Untitled buffer: prompt for a location; cancel keeps the app open.
-      const selected = await save({
-        filters: [{ name: "Markdown", extensions: ["md"] }],
-        defaultPath: fileName ?? undefined,
-      });
-      if (!selected) return;
       try {
-        await invoke("save_file", { path: selected, content: contentRef.current });
-      } catch {
-        showToast("Failed to save file", "error");
-        return;
+        await invoke("save_file", { path, content: t.content });
+      } catch (err) {
+        const msg = errMessage(err);
+        showToast(msg || `Failed to save ${t.fileName}`, "error");
+        return; // don't close on a failed save — the user would lose the buffer
       }
     }
     forceCloseWindow();
-  }, [fileName, forceCloseWindow, showToast]);
+  }, [collectDirtyTabs, forceCloseWindow, showToast]);
 
   const handleDiscardAndCloseWindow = useCallback(() => {
     setShowUnsavedBeforeClose(false);
@@ -664,6 +757,90 @@ function AppContent() {
     onError: handleAutosaveError,
   });
 
+  // Autosave dirty BACKGROUND tabs too (useAutosave above only covers the active
+  // buffer). A background tab's content only changes when you switch away from
+  // it, so this effect keys on `tabs` — it never re-runs on active-tab keystrokes
+  // (those live in `content`, not the snapshot). Saved tabs get their
+  // originalContent/knownMtime updated, which clears them from the dirty set so
+  // the effect settles without looping. TABS-06.
+  useEffect(() => {
+    if (!autoSaveEnabled) return;
+    const activeId = activeTabIdRef.current;
+    const dirtyBg = tabs.filter(
+      (t) => t.id !== activeId && t.filePath && t.content !== t.originalContent
+    );
+    if (dirtyBg.length === 0) return;
+    const timer = window.setTimeout(async () => {
+      for (const t of dirtyBg) {
+        try {
+          const mtime = await invoke<number>("save_file", { path: t.filePath!, content: t.content });
+          // Only mark saved if the snapshot still holds exactly what we wrote.
+          commitTabs(
+            tabsRef.current.map((x) =>
+              x.id === t.id && x.content === t.content
+                ? { ...x, originalContent: t.content, knownMtime: mtime }
+                : x
+            )
+          );
+        } catch {/* best-effort; the active-tab path surfaces disk errors */}
+      }
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [tabs, autoSaveEnabled, commitTabs]);
+
+  // External-change detection for BACKGROUND tabs. The active tab is handled by
+  // useExternalChangeWatcher; on window focus we also stat every other open
+  // file. A clean background tab silently refreshes its snapshot; a dirty one
+  // gets a one-time conflict warning (its knownMtime is advanced so it won't
+  // re-toast every focus). TABS-06.
+  useEffect(() => {
+    const onFocus = async () => {
+      const activeId = activeTabIdRef.current;
+      const bg = tabsRef.current.filter((t) => t.id !== activeId && t.filePath);
+      for (const t of bg) {
+        try {
+          const info = await invoke<{ modified: number }>("get_file_info", { path: t.filePath! });
+          if (!(t.knownMtime > 0 && info.modified > t.knownMtime)) continue;
+          if (t.content === t.originalContent) {
+            const fd = await invoke<FileData>("read_file", { path: t.filePath! });
+            commitTabs(
+              tabsRef.current.map((x) =>
+                x.id === t.id
+                  ? { ...x, content: fd.content, originalContent: fd.content, fileSize: fd.size, knownMtime: fd.modified ?? 0 }
+                  : x
+              )
+            );
+          } else {
+            commitTabs(tabsRef.current.map((x) => (x.id === t.id ? { ...x, knownMtime: info.modified } : x)));
+            showToast(`"${t.fileName}" changed on disk in a background tab. Saving it will overwrite those changes.`, "error");
+          }
+        } catch {/* file gone / stat failed — surfaced when that tab is saved */}
+      }
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [commitTabs, showToast]);
+
+  // Persist the whole open-tab session (paths + which is active) so a relaunch
+  // reopens everything, not just one file. Runs whenever the tab list or the
+  // active tab changes. Untitled buffers have no path and are omitted. The
+  // active tab's caret line comes from the live currentLineRef (its snapshot
+  // lags until the next switch). TABS-07.
+  useEffect(() => {
+    const activeId = activeTabIdRef.current;
+    const persistable = tabs.filter((t) => t.filePath);
+    if (persistable.length === 0) {
+      setSession(null);
+      return;
+    }
+    const sessTabs = persistable.map((t) => ({
+      path: t.filePath!,
+      cursorLine: t.id === activeId ? currentLineRef.current : t.cursorLine,
+    }));
+    const activeIdx = persistable.findIndex((t) => t.id === activeId);
+    setSession({ tabs: sessTabs, activeIndex: activeIdx < 0 ? 0 : activeIdx });
+  }, [tabs, activeTabId]);
+
   // Open a file: if it's already in a tab, just switch to it (preserving any
   // unsaved edits there); otherwise load it into a new tab. With tabs there's no
   // need to prompt before opening — the current file stays open in its own tab.
@@ -673,22 +850,43 @@ function AppContent() {
     await loadFileDirect(path);
   }, [activateTab, loadFileDirect]);
 
-  // Close a tab. Prompts before discarding unsaved changes; when the active tab
-  // closes, focus the neighbour (or fall back to the welcome screen). TABS-01.
-  const closeTab = useCallback(async (id: string) => {
-    const tab = tabsRef.current.find((t) => t.id === id);
-    if (!tab) return;
-    const isActive = id === activeTabIdRef.current;
-    const dirty = isActive
-      ? liveRef.current.content !== liveRef.current.originalContent
-      : tab.content !== tab.originalContent;
-    if (dirty) {
-      const discard = await ask(`Discard unsaved changes to "${tab.fileName}"?`, {
-        title: "Close tab",
-        kind: "warning",
-      });
-      if (!discard) return;
+  // Reopen the most recently closed (saved) tab, restoring its caret line. TABS-15.
+  const reopenClosedTab = useCallback(() => {
+    const entry = closedTabsRef.current.pop();
+    if (!entry) return;
+    loadFile(entry.path);
+    if (entry.cursorLine && entry.cursorLine > 1) {
+      const line = entry.cursorLine;
+      window.setTimeout(
+        () => window.dispatchEvent(new CustomEvent("paperling:goto-line", { detail: { line } })),
+        150
+      );
     }
+  }, [loadFile]);
+
+  // Jump to a tab by position (Ctrl+1..8); index -1 means the last tab (Ctrl+9,
+  // browser convention). TABS-16.
+  const gotoTabByIndex = useCallback((index: number) => {
+    const list = tabsRef.current;
+    if (list.length === 0) return;
+    const target = index === -1 ? list[list.length - 1] : list[index];
+    if (target) activateTab(target.id);
+  }, [activateTab]);
+
+  // Remove a tab and refocus a neighbour (or fall back to the welcome screen).
+  // No dirty check here — callers decide whether to prompt first. TABS-01.
+  const finalizeCloseTab = useCallback((id: string) => {
+    // Remember saved tabs so Ctrl+Shift+T can reopen them. TABS-15.
+    const closing = tabsRef.current.find((t) => t.id === id);
+    if (closing?.filePath) {
+      const isActiveClosing = id === activeTabIdRef.current;
+      closedTabsRef.current.push({
+        path: closing.filePath,
+        cursorLine: isActiveClosing ? currentLineRef.current : closing.cursorLine,
+      });
+      if (closedTabsRef.current.length > 25) closedTabsRef.current.shift();
+    }
+    const isActive = id === activeTabIdRef.current;
     const nextId = nextActiveAfterClose(tabsRef.current, id);
     const remaining = tabsRef.current.filter((t) => t.id !== id);
     commitTabs(remaining);
@@ -701,6 +899,7 @@ function AppContent() {
       // Last tab closed — return to the clean welcome state.
       setActiveTab(null);
       setProposedDoc(null);
+      bumpDocSwap();
       setFilePath(null);
       setFileName(null);
       setContent("");
@@ -709,7 +908,70 @@ function AppContent() {
       knownMtimeRef.current = 0;
       setLastFile(null);
     }
-  }, [commitTabs, setActiveTab, applyTabToLive]);
+  }, [commitTabs, setActiveTab, applyTabToLive, bumpDocSwap]);
+
+  // Close a tab. A clean tab closes immediately; a dirty one opens the
+  // Save / Discard / Cancel dialog (TABS-05) rather than the old two-button
+  // discard-or-cancel prompt.
+  const closeTab = useCallback((id: string) => {
+    const tab = tabsRef.current.find((t) => t.id === id);
+    if (!tab) return;
+    const isActive = id === activeTabIdRef.current;
+    const dirty = isActive
+      ? liveRef.current.content !== liveRef.current.originalContent
+      : tab.content !== tab.originalContent;
+    if (dirty) {
+      setCloseTabPrompt({ id, fileName: isActive ? (liveRef.current.fileName ?? "Untitled.md") : tab.fileName });
+      return;
+    }
+    finalizeCloseTab(id);
+  }, [finalizeCloseTab]);
+
+  // The effective save target for a tab, reading the active tab from live state.
+  const getTabSaveData = useCallback((id: string) => {
+    const t = tabsRef.current.find((x) => x.id === id);
+    if (!t) return null;
+    const isActive = id === activeTabIdRef.current;
+    const live = liveRef.current;
+    return {
+      filePath: isActive ? live.filePath : t.filePath,
+      fileName: isActive ? (live.fileName ?? "Untitled.md") : t.fileName,
+      content: isActive ? live.content : t.content,
+    };
+  }, []);
+
+  // "Save" in the close-tab dialog: persist the tab (prompting a location for an
+  // untitled buffer), then close it. Cancel/failure keeps the tab open. TABS-05.
+  const handleSaveCloseTab = useCallback(async () => {
+    const prompt = closeTabPrompt;
+    if (!prompt) return;
+    const data = getTabSaveData(prompt.id);
+    if (!data) { setCloseTabPrompt(null); return; }
+    let path = data.filePath;
+    if (!path) {
+      const selected = await save({
+        filters: [{ name: "Markdown", extensions: ["md"] }],
+        defaultPath: data.fileName,
+      });
+      if (!selected) return; // cancelled save-as → keep the tab open
+      path = selected;
+    }
+    try {
+      await invoke("save_file", { path, content: data.content });
+    } catch (err) {
+      const msg = errMessage(err);
+      showToast(msg || "Failed to save file", "error");
+      return; // keep the tab open on a failed save
+    }
+    setCloseTabPrompt(null);
+    finalizeCloseTab(prompt.id);
+  }, [closeTabPrompt, getTabSaveData, showToast, finalizeCloseTab]);
+
+  const handleDiscardCloseTab = useCallback(() => {
+    const prompt = closeTabPrompt;
+    setCloseTabPrompt(null);
+    if (prompt) finalizeCloseTab(prompt.id);
+  }, [closeTabPrompt, finalizeCloseTab]);
 
   // Listen for Tauri drag-drop events
   useEffect(() => {
@@ -717,13 +979,13 @@ function AppContent() {
     let unlisten: (() => void) | undefined;
 
     listen<{ paths: string[] }>(TauriEvent.DRAG_DROP, async (event) => {
-      const paths = event.payload.paths;
-      if (paths && paths.length > 0) {
-        const firstPath = paths[0];
-        // Only load markdown files
-        if (firstPath.endsWith('.md') || firstPath.endsWith('.markdown')) {
-          await loadFile(firstPath);
-        }
+      // Open EVERY dropped markdown / text file in its own tab (the last one
+      // wins focus), rather than only the first. TABS-11 / TXT-01.
+      const paths = (event.payload.paths ?? []).filter((p) =>
+        /\.(md|markdown|txt|text)$/i.test(p)
+      );
+      for (const p of paths) {
+        await loadFile(p);
       }
     }).then((fn) => {
       if (mounted) {
@@ -751,7 +1013,7 @@ function AppContent() {
       await invoke<number>("save_file", { path, content: "" });
       await loadFile(path);
     } catch (err) {
-      const msg = typeof err === "string" ? err : (err as { message?: string })?.message;
+      const msg = errMessage(err);
       showToast(msg || "Could not create note", "error");
     }
   }, [loadFile, showToast]);
@@ -819,14 +1081,15 @@ function AppContent() {
   // Open a cross-file search result: load the file (if not already open) and
   // jump to the matching line once it has rendered. The goto-line event is the
   // same one the TOC/palette use, so it lands correctly in any view mode. SEARCH-01.
-  const handleOpenSearchResult = useCallback((path: string, line: number) => {
-    const jump = () => window.setTimeout(
-      () => window.dispatchEvent(new CustomEvent("paperling:goto-line", { detail: { line } })),
-      120
+  const handleOpenSearchResult = useCallback(async (path: string, line: number) => {
+    // Wait for the file to actually load before jumping, instead of racing a
+    // fixed timeout that a large document could lose (landing at the top). SEARCH-01.
+    if (path !== filePathRef.current) {
+      await loadFile(path);
+    }
+    requestAnimationFrame(() =>
+      window.dispatchEvent(new CustomEvent("paperling:goto-line", { detail: { line } }))
     );
-    if (path === filePathRef.current) { jump(); return; }
-    loadFile(path);
-    jump();
   }, [loadFile]);
 
   // Folder the cross-file search runs in: the open file's directory.
@@ -837,25 +1100,34 @@ function AppContent() {
   }, [filePath]);
 
   // New file: opens a fresh Untitled buffer in its own tab (the current file
-  // stays open in its tab, so nothing is discarded). TABS-01.
+  // stays open in its tab, so nothing is discarded). Reuses a pristine empty
+  // untitled tab if one exists, and numbers new ones Untitled-N.md. TABS-01/08.
   const handleNewFile = useCallback(() => {
+    const reusable = findReusableUntitledTab(tabsRef.current);
+    if (reusable) {
+      if (reusable.id !== activeTabIdRef.current) activateTab(reusable.id);
+      setMode("code");
+      return;
+    }
     snapshotActiveTab();
+    bumpDocSwap(); // fresh Untitled buffer → editor resets undo history. TABS-03.
     const id = newTabId();
+    const name = nextUntitledName(tabsRef.current);
     commitTabs([...tabsRef.current, {
-      id, filePath: null, fileName: "Untitled.md",
+      id, filePath: null, fileName: name,
       content: "", originalContent: "", fileSize: 0, knownMtime: 0,
     }]);
     setActiveTab(id);
     setProposedDoc(null);
     setFilePath(null);
-    setFileName("Untitled.md");
+    setFileName(name);
     setContent("");
     setOriginalContent("");
     setFileSize(0);
     knownMtimeRef.current = 0;
     setLastFile(null);
     setMode("code");
-  }, [snapshotActiveTab, commitTabs, setActiveTab, newTabId]);
+  }, [snapshotActiveTab, commitTabs, setActiveTab, newTabId, bumpDocSwap, activateTab]);
 
   // "Replay the welcome tour" from Settings → About. The tour spotlights
   // editor chrome, so make sure a buffer exists before showing it.
@@ -871,18 +1143,22 @@ function AppContent() {
   // Open file dialog
   const handleOpenFile = useCallback(async () => {
     try {
+      // Allow selecting several files at once — each opens in its own tab. TABS-11.
+      // Plain-text files open too (rendered as markdown, which degrades fine). TXT-01.
       const selected = await open({
-        multiple: false,
+        multiple: true,
         filters: [
           {
-            name: "Markdown",
-            extensions: ["md", "markdown"],
+            name: "Markdown & text",
+            extensions: ["md", "markdown", "txt", "text"],
           },
         ],
       });
 
-      if (selected && typeof selected === "string") {
+      if (typeof selected === "string") {
         await loadFile(selected);
+      } else if (Array.isArray(selected)) {
+        for (const p of selected) await loadFile(p);
       }
     } catch (err) {
       console.error("Failed to open file dialog:", err);
@@ -916,7 +1192,7 @@ function AppContent() {
       showToast("File saved", "success");
     } catch (err) {
       console.error("Failed to save file:", err);
-      const msg = typeof err === "string" ? err : (err as { message?: string })?.message;
+      const msg = errMessage(err);
       showToast(msg || "Failed to save file", "error");
     }
   }, [content, fileName, showToast, commitTabs]);
@@ -933,7 +1209,7 @@ function AppContent() {
       showToast("File saved", "success");
     } catch (err) {
       console.error("Failed to save file:", err);
-      const msg = typeof err === "string" ? err : (err as { message?: string })?.message;
+      const msg = errMessage(err);
       showToast(msg || "Failed to save file", "error");
     }
   }, [filePath, content, showToast, handleSaveAs]);
@@ -1091,6 +1367,8 @@ function AppContent() {
     closeActiveTab: () => { if (activeTabIdRef.current) closeTab(activeTabIdRef.current); },
     prevTab: () => cycleTab(-1),
     nextTab: () => cycleTab(1),
+    reopenClosedTab,
+    gotoTab: gotoTabByIndex,
     hasFile, content, mode,
   });
 
@@ -1179,6 +1457,15 @@ function AppContent() {
         icon: "analytics",
         keywords: "words count reading time",
         run: () => setShowStats(true),
+      });
+      items.push({
+        id: "tab.close",
+        label: "Close tab",
+        hint: "Ctrl+W",
+        section: "File",
+        icon: "tab_close",
+        keywords: "close current tab",
+        run: () => { if (activeTabIdRef.current) closeTab(activeTabIdRef.current); },
       });
     }
 
@@ -1349,7 +1636,7 @@ function AppContent() {
     // separate hook that's gated on the palette actually being open.
     handleNewFile, handleOpenFile, handleSaveFile, handleSaveAs,
     handleToggleSplit, handleToggleFileExplorer, handleToggleTOC, toggleFullscreen,
-    loadFile, filePath, hasFile, showToast,
+    loadFile, filePath, hasFile, showToast, closeTab,
     typewriterModeEnabled, toolbarVisible, aiEnabled,
     theme, setTheme,
   ]);
@@ -1388,29 +1675,101 @@ function AppContent() {
     return items;
   }, [showPalette, deferredContent]);
 
+  // "Open tabs" palette section — jump to any open tab by name (only worthwhile
+  // with more than one open). Uses the same folder disambiguation as the bar. TABS-11.
+  const tabPaletteItems = useMemo<PaletteCommand[]>(() => {
+    if (tabs.length < 2) return [];
+    const resolved = tabs.map((t) => ({
+      id: t.id,
+      fileName: t.id === activeTabId ? (fileName ?? "Untitled.md") : t.fileName,
+      filePath: t.id === activeTabId ? filePath : t.filePath,
+    }));
+    const labels = computeTabLabels(resolved);
+    return tabs.map((t) => ({
+      id: `opentab.${t.id}`,
+      label: `${labels.get(t.id) ?? t.fileName}${t.id === activeTabId ? " (current)" : ""}`,
+      section: "Open tabs",
+      icon: "tab",
+      keywords: "switch tab open file",
+      run: () => activateTab(t.id),
+    }));
+  }, [tabs, activeTabId, fileName, filePath, activateTab]);
+
   // Concatenated list passed to the palette. Same `paletteItems` shape as
   // before so the CommandPalette component sees no API change. Reference
-  // changes only when one of the two sources changes — typically rare.
+  // changes only when one of the sources changes — typically rare.
   const fullPaletteItems = useMemo<PaletteCommand[]>(
-    () => (headingPaletteItems.length ? [...paletteItems, ...headingPaletteItems] : paletteItems),
-    [paletteItems, headingPaletteItems]
+    () => [...paletteItems, ...tabPaletteItems, ...headingPaletteItems],
+    [paletteItems, tabPaletteItems, headingPaletteItems]
   );
 
   // Tab-bar items. The active tab's name/dirty come from live state (its stored
   // snapshot lags until the next switch); inactive tabs read their snapshot.
-  // Keyed on `isDirty` (a boolean) so typing within an already-dirty file
-  // doesn't churn this list. TABS-01.
-  const tabBarItems = useMemo<TabBarItem[]>(
-    () => tabs.map((t) => {
+  // `label` disambiguates duplicate file names by folder (TABS-09); `name` is
+  // the bare file name (title/aria). Keyed on `isDirty` (a boolean) so typing
+  // within an already-dirty file doesn't churn this list. TABS-01.
+  const tabBarItems = useMemo<TabBarItem[]>(() => {
+    const resolved = tabs.map((t) => {
       const active = t.id === activeTabId;
       return {
         id: t.id,
-        name: active ? (fileName ?? "Untitled.md") : t.fileName,
+        fileName: active ? (fileName ?? "Untitled.md") : t.fileName,
+        filePath: active ? filePath : t.filePath,
         dirty: active ? isDirty : t.content !== t.originalContent,
       };
-    }),
-    [tabs, activeTabId, fileName, isDirty]
-  );
+    });
+    const labels = computeTabLabels(resolved);
+    return resolved.map((t) => ({
+      id: t.id,
+      name: t.fileName,
+      label: labels.get(t.id) ?? t.fileName,
+      dirty: t.dirty,
+    }));
+  }, [tabs, activeTabId, fileName, filePath, isDirty]);
+
+  // Drag-reorder: move a tab to a new index. TABS-10.
+  const handleReorderTab = useCallback((fromIndex: number, toIndex: number) => {
+    commitTabs(moveTab(tabsRef.current, fromIndex, toIndex));
+  }, [commitTabs]);
+
+  // Close a set of tabs, but only the CLEAN ones — dirty tabs are kept open
+  // (never silently discarded) and reported. Used by the context-menu
+  // "Close others / Close to the right" actions. TABS-12.
+  const closeManyClean = useCallback((ids: string[]) => {
+    let keptDirty = 0;
+    for (const id of ids) {
+      const t = tabsRef.current.find((x) => x.id === id);
+      if (!t) continue;
+      const dirty = id === activeTabIdRef.current
+        ? liveRef.current.content !== liveRef.current.originalContent
+        : t.content !== t.originalContent;
+      if (dirty) { keptDirty++; continue; }
+      finalizeCloseTab(id);
+    }
+    if (keptDirty > 0) {
+      showToast(`Kept ${keptDirty} unsaved tab${keptDirty > 1 ? "s" : ""} open`, "info");
+    }
+  }, [finalizeCloseTab, showToast]);
+
+  const handleTabMenuAction = useCallback((action: "closeOthers" | "closeRight", id: string) => {
+    const list = tabsRef.current;
+    if (action === "closeOthers") {
+      closeManyClean(list.filter((t) => t.id !== id).map((t) => t.id));
+    } else {
+      const idx = list.findIndex((t) => t.id === id);
+      if (idx >= 0) closeManyClean(list.slice(idx + 1).map((t) => t.id));
+    }
+    // Keep the anchor tab focused if it survived.
+    if (tabsRef.current.some((t) => t.id === id) && id !== activeTabIdRef.current) {
+      activateTab(id);
+    }
+  }, [closeManyClean, activateTab]);
+
+  // Right-click menu on a tab: {id, x, y} while open. TABS-12.
+  const [tabMenu, setTabMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const handleTabContextMenu = useCallback((id: string, x: number, y: number) => {
+    setTabMenu({ id, x, y });
+  }, []);
 
   return (
     <div className="h-screen flex flex-col bg-[var(--bg-primary)] overflow-hidden transition-colors">
@@ -1438,6 +1797,8 @@ function AppContent() {
           onSelect={activateTab}
           onClose={closeTab}
           onNewTab={handleNewFile}
+          onReorder={handleReorderTab}
+          onContextMenu={handleTabContextMenu}
         />
       )}
 
@@ -1491,6 +1852,7 @@ function AppContent() {
             >
               <CodeEditor
                 content={content}
+                docSwapId={docSwapId}
                 onChange={handleContentChange}
                 onCursorChange={handleCursorChange}
                 onSelectionChange={handleSelectionChange}
@@ -1627,6 +1989,21 @@ function AppContent() {
             onClose={() => setShowUnsavedBeforeClose(false)}
             onDiscard={handleDiscardAndCloseWindow}
             onSave={handleSaveAndCloseWindow}
+            dirtyNames={tabBarItems.filter((t) => t.dirty).map((t) => t.name)}
+          />
+        </Suspense>
+      )}
+
+      {/* Save/Discard/Cancel when closing a single dirty tab (Ctrl+W, the tab's
+          × or middle-click). TABS-05. */}
+      {closeTabPrompt && (
+        <Suspense fallback={null}>
+          <UnsavedChangesDialog
+            isOpen={!!closeTabPrompt}
+            onClose={() => setCloseTabPrompt(null)}
+            onDiscard={handleDiscardCloseTab}
+            onSave={handleSaveCloseTab}
+            dirtyNames={[closeTabPrompt.fileName]}
           />
         </Suspense>
       )}
@@ -1701,6 +2078,36 @@ function AppContent() {
       {showTour && hasFile && !booting && (
         <Tour onClose={handleCloseTour} onSetMode={setMode} />
       )}
+
+      {/* Tab right-click menu. TABS-12. */}
+      {tabMenu && (() => {
+        const menuTab = tabs.find((t) => t.id === tabMenu.id);
+        const isActiveMenu = tabMenu.id === activeTabId;
+        const menuPath = isActiveMenu ? filePath : (menuTab?.filePath ?? null);
+        const idx = tabs.findIndex((t) => t.id === tabMenu.id);
+        const hasRight = idx >= 0 && idx < tabs.length - 1;
+        const others = tabs.length > 1;
+        return (
+          <TabContextMenu
+            x={tabMenu.x}
+            y={tabMenu.y}
+            onClose={() => setTabMenu(null)}
+            actions={[
+              { label: "Close", icon: "close", onClick: () => closeTab(tabMenu.id) },
+              { label: "Close others", icon: "close_fullscreen", disabled: !others, onClick: () => handleTabMenuAction("closeOthers", tabMenu.id) },
+              { label: "Close to the right", icon: "keyboard_tab", disabled: !hasRight, onClick: () => handleTabMenuAction("closeRight", tabMenu.id) },
+              {
+                label: "Copy path", icon: "content_copy", dividerBefore: true, disabled: !menuPath,
+                onClick: () => { if (menuPath) navigator.clipboard.writeText(menuPath).then(() => showToast("File path copied", "success"), () => showToast("Could not copy path", "error")); },
+              },
+              {
+                label: "Reveal in folder", icon: "folder_open", disabled: !menuPath,
+                onClick: () => { if (menuPath) revealItemInDir(menuPath).catch(() => showToast("Could not reveal file", "error")); },
+              },
+            ]}
+          />
+        );
+      })()}
 
       {/* Toast notifications */}
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
