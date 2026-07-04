@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.48] - 2026-07-04
+
 ### Fixed
 
 - **Tab "unsaved" indicator.** The mark showing a tab has unsaved edits rendered
