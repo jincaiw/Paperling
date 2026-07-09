@@ -258,7 +258,7 @@ export function Tour({ onClose, onOpenTutorial }: TourProps) {
                     <div className="w-full flex items-center justify-between gap-2">
                         <button
                             onClick={onClose}
-                            className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors px-2 py-1.5 rounded"
+                            className="btn-press text-sm font-medium px-4 py-2 rounded-[var(--radius-md)] bg-[var(--bg-primary)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border)] transition-all duration-200"
                         >
                             {isLast ? "Just start writing" : "Skip tour"}
                         </button>
