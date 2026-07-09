@@ -34,7 +34,7 @@ const STEPS: Step[] = [
         imageAlt: "Paperling mascot waving hello",
         imageClass: "h-32",
         title: "Hey, welcome to Paperling!",
-        body: "I'm the paperling this app is named after. Want a quick look around? It takes about 15 seconds.",
+        body: "I'm the paperling this app is named after. Want a quick look around? It takes about 15 seconds, and you can replay it anytime from the command palette.",
     },
     {
         id: "explorer",
