@@ -1882,7 +1882,6 @@ function AppContent() {
               mode switches. */}
           <div
             ref={splitContainerRef}
-            data-tour="editor"
             className="flex-1 overflow-hidden flex flex-row"
             // Reserve space on the right for the AI panel so editor/preview reflow
             // beside it instead of being covered. The panel itself is fixed at
@@ -2128,7 +2127,7 @@ function AppContent() {
       {/* First-run welcome tour. Gated on hasFile because every spotlight
           target (editor panes, mode toggle) only exists with an open buffer. */}
       {showTour && hasFile && !booting && (
-        <Tour onClose={handleCloseTour} onSetMode={setMode} onOpenTutorial={handleOpenTutorial} />
+        <Tour onClose={handleCloseTour} onOpenTutorial={handleOpenTutorial} />
       )}
 
       {/* Tab right-click menu. TABS-12. */}

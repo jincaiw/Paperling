@@ -17,7 +17,6 @@ export function ModeToggle({ mode, onSetMode, aiPanelOpen }: ModeToggleProps) {
             style={{ right: aiPanelOpen ? "calc(min(400px, 90vw) + 2rem)" : "2rem", transition: "right 0.15s ease" }}
             role="group"
             aria-label="View mode toggle"
-            data-tour="mode-toggle"
         >
             <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-full p-1.5 flex items-center shadow-2xl backdrop-blur-sm transition-colors animate-fade-in">
                 <button

@@ -1,9 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { ViewMode } from "./ModeToggle";
 import mascotWave from "../assets/mascot/mascot-wave.png";
-import mascotWrite from "../assets/mascot/mascot-write.png";
-import mascotPointRight from "../assets/mascot/mascot-point-right.png";
-import mascotThink from "../assets/mascot/mascot-think.png";
 import iconPalette from "../assets/mascot/icon-command-palette.png";
 import iconFolder from "../assets/mascot/icon-folder.png";
 import iconBook from "../assets/mascot/icon-book.png";
@@ -12,8 +8,6 @@ import mascotRocket from "../assets/mascot/mascot-rocket.png";
 interface TourProps {
     /** Called when the tour finishes or is skipped. Caller persists the done flag. */
     onClose: () => void;
-    /** Lets the editor step switch to split view so both panes are visible. */
-    onSetMode: (mode: ViewMode) => void;
     /** Opens the interactive feature guide (offered on the final step). */
     onOpenTutorial?: () => void;
 }
@@ -43,16 +37,6 @@ const STEPS: Step[] = [
         body: "I'm the paperling this app is named after. Want a quick look around? It takes about 30 seconds.",
     },
     {
-        id: "editor",
-        target: "[data-tour='editor']",
-        placement: "center",
-        image: mascotWrite,
-        imageAlt: "Paperling mascot writing with a pencil",
-        imageClass: "h-28",
-        title: "Your editor",
-        body: "Write markdown on the left and watch it render live on the right. Just start typing.",
-    },
-    {
         id: "explorer",
         target: "[data-tour='file-explorer']",
         placement: "above",
@@ -73,16 +57,6 @@ const STEPS: Step[] = [
         body: "This is the table of contents. Every heading you write shows up here, and it tracks where you are as you scroll. Click any heading to jump straight to it. (Ctrl+Shift+O)",
     },
     {
-        id: "modes",
-        target: "[data-tour='mode-toggle']",
-        placement: "left-of",
-        image: mascotPointRight,
-        imageAlt: "Paperling mascot pointing at the view toggle",
-        imageClass: "h-24",
-        title: "Pick your view",
-        body: "Reader for reading, Split for writing, Code for raw markdown. Ctrl+E flips between them.",
-    },
-    {
         id: "palette",
         placement: "center",
         image: iconPalette,
@@ -90,16 +64,6 @@ const STEPS: Step[] = [
         imageClass: "h-24",
         title: "One box for everything",
         body: "Press Ctrl+P after the tour to open the command palette. Files, views, themes, AI: it's all in there.",
-    },
-    {
-        id: "themes",
-        target: "[data-tour='settings']",
-        placement: "below",
-        image: mascotThink,
-        imageAlt: "Paperling mascot thinking about themes",
-        imageClass: "h-24",
-        title: "Make it yours",
-        body: "Four themes live under this gear: Dark, Light, Paper and Dracula.",
     },
     {
         id: "done",
@@ -120,7 +84,7 @@ const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min)
 
 interface SpotRect { left: number; top: number; width: number; height: number }
 
-export function Tour({ onClose, onSetMode, onOpenTutorial }: TourProps) {
+export function Tour({ onClose, onOpenTutorial }: TourProps) {
     const [stepIndex, setStepIndex] = useState(0);
     const [rect, setRect] = useState<SpotRect | null>(null);
     const [cardPos, setCardPos] = useState<{ left: number; top: number } | null>(null);
@@ -130,11 +94,6 @@ export function Tour({ onClose, onSetMode, onOpenTutorial }: TourProps) {
     const step = STEPS[stepIndex];
     const isFirst = stepIndex === 0;
     const isLast = stepIndex === STEPS.length - 1;
-
-    // The editor step shows off split view so both panes are on screen.
-    useEffect(() => {
-        if (step.id === "editor") onSetMode("split");
-    }, [step.id, onSetMode]);
 
     const measure = useCallback(() => {
         if (!step.target) {
@@ -155,7 +114,7 @@ export function Tour({ onClose, onSetMode, onOpenTutorial }: TourProps) {
         });
     }, [step.target]);
 
-    // Measure after a frame so layout changes from onSetMode have settled.
+    // Measure after a frame so any pending layout changes have settled.
     useLayoutEffect(() => {
         const raf = requestAnimationFrame(measure);
         return () => cancelAnimationFrame(raf);
