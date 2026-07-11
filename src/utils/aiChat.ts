@@ -5,6 +5,7 @@
  */
 
 import { isValidEndpoint, type AIConfig } from "./aiAssist";
+import { aiFetch } from "./aiTransport";
 
 export type ChatRole = "system" | "user" | "assistant";
 export interface ChatMessage {
@@ -44,76 +45,90 @@ export async function streamChat(
     if (!isValidEndpoint(cfg.endpoint)) throw new Error("AI endpoint must be a valid http:// or https:// URL.");
     if (!cfg.model) throw new Error("AI model not configured.");
 
-    const ctrl = new AbortController();
-    const onUserAbort = () => ctrl.abort();
-    opts.signal?.addEventListener("abort", onUserAbort);
-    // Guards only the initial connection; cleared once the response headers
-    // arrive so a long generation isn't cut off mid-stream.
-    const connectTimeout = window.setTimeout(() => ctrl.abort(), AI_CONNECT_TIMEOUT_MS);
+    let status = 0;
+    let sawDataLine = false;
+    let buffer = "";
+    let full = "";
 
+    const parseSseLine = (line: string) => {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) return;
+        sawDataLine = true;
+        const payload = trimmed.slice(5).trim();
+        if (payload === "[DONE]") return;
+        try {
+            const json = JSON.parse(payload);
+            const delta: string = json?.choices?.[0]?.delta?.content ?? "";
+            if (delta) {
+                full += delta;
+                opts.onToken?.(delta);
+            }
+        } catch {
+            /* partial JSON across chunk boundary — completed on next read */
+        }
+    };
+
+    let res;
     try {
-        const res = await fetch(cfg.endpoint, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}),
-            },
-            body: JSON.stringify({
+        res = await aiFetch(
+            cfg.endpoint,
+            cfg.apiKey,
+            JSON.stringify({
                 model: cfg.model,
                 messages,
                 temperature: opts.temperature ?? 0.4,
                 stream: true,
             }),
-            signal: ctrl.signal,
-        });
-        window.clearTimeout(connectTimeout);
-
-        if (!res.ok) {
-            const body = await res.text().catch(() => "");
-            throw new Error(mapHttpError(res.status, body));
-        }
-
-        // Endpoint ignored `stream` (or returned no body) — read the whole thing.
-        if (!res.body) {
-            const data = await res.json();
-            const content = extractContent(data);
-            if (content) opts.onToken?.(content);
-            return content;
-        }
-
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        let full = "";
-        for (;;) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            // Process complete SSE lines; keep any trailing partial line buffered.
-            const lines = buffer.split("\n");
-            buffer = lines.pop() ?? "";
-            for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed.startsWith("data:")) continue;
-                const payload = trimmed.slice(5).trim();
-                if (payload === "[DONE]") continue;
-                try {
-                    const json = JSON.parse(payload);
-                    const delta: string = json?.choices?.[0]?.delta?.content ?? "";
-                    if (delta) {
-                        full += delta;
-                        opts.onToken?.(delta);
-                    }
-                } catch {
-                    /* partial JSON across chunk boundary — completed on next read */
-                }
+            {
+                signal: opts.signal,
+                // Guards only until the response headers arrive (no totalTimeoutMs)
+                // so a long generation isn't cut off mid-stream.
+                connectTimeoutMs: AI_CONNECT_TIMEOUT_MS,
+                onStatus: (s) => {
+                    status = s;
+                },
+                onChunk: (text) => {
+                    // A non-OK body isn't SSE — let aiFetch accumulate it for the
+                    // error mapping below instead of parsing it as deltas.
+                    if (status < 200 || status >= 300) return;
+                    buffer += text;
+                    // Process complete SSE lines; keep any trailing partial line
+                    // buffered. The Rust side already delivers whole lines, but
+                    // this tolerates any chunking.
+                    const lines = buffer.split("\n");
+                    buffer = lines.pop() ?? "";
+                    for (const line of lines) parseSseLine(line);
+                },
             }
+        );
+    } catch (e) {
+        // The transport's raw "timed out" is not user-facing copy. (User
+        // aborts arrive as AbortError and rethrow untouched.)
+        if (e instanceof Error && e.message.includes("timed out")) {
+            throw new Error(`AI endpoint did not respond within ${AI_CONNECT_TIMEOUT_MS / 1000}s.`);
         }
-        return full;
-    } finally {
-        window.clearTimeout(connectTimeout);
-        opts.signal?.removeEventListener("abort", onUserAbort);
+        throw e;
     }
+
+    if (status < 200 || status >= 300) {
+        throw new Error(mapHttpError(status, res.body));
+    }
+
+    // Endpoint ignored `stream: true` — no SSE frames arrived, but the body is
+    // a regular (non-streamed) completion. Read the whole thing.
+    if (!sawDataLine) {
+        let data: unknown;
+        try {
+            data = JSON.parse(res.body);
+        } catch {
+            return full; // not SSE and not JSON — nothing usable
+        }
+        const content = extractContent(data);
+        if (content) opts.onToken?.(content);
+        return content;
+    }
+
+    return full;
 }
 
 // ===== Prompt + message construction =====

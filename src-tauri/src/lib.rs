@@ -1,3 +1,4 @@
+mod ai;
 mod commands;
 mod pdf;
 
@@ -73,6 +74,7 @@ pub fn run() {
             Ok(())
         })
         .manage(CliFile(Mutex::new(cli_file)))
+        .manage(ai::AiCancel::default())
         .invoke_handler(tauri::generate_handler![
             read_file,
             save_file,
@@ -84,7 +86,9 @@ pub fn run() {
             get_ai_key,
             set_ai_key,
             get_cli_file,
-            pdf::export_pdf
+            pdf::export_pdf,
+            ai::ai_request,
+            ai::ai_cancel
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

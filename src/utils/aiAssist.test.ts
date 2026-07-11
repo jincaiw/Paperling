@@ -1,5 +1,9 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { isValidEndpoint, runAIAction, type AIConfig } from "./aiAssist";
+import { aiFetch } from "./aiTransport";
+
+vi.mock("./aiTransport", () => ({ aiFetch: vi.fn() }));
+const mockAiFetch = vi.mocked(aiFetch);
 
 const cfg = (over: Partial<AIConfig> = {}): AIConfig => ({
     endpoint: "https://api.test/v1/chat/completions",
@@ -8,7 +12,12 @@ const cfg = (over: Partial<AIConfig> = {}): AIConfig => ({
     ...over,
 });
 
-afterEach(() => vi.unstubAllGlobals());
+/** Shorthand for a transport response the Rust command would deliver. */
+const respond = (status: number, body: unknown) =>
+    mockAiFetch.mockResolvedValue({
+        status,
+        body: typeof body === "string" ? body : JSON.stringify(body),
+    });
 
 describe("isValidEndpoint", () => {
     it("accepts http and https", () => {
@@ -36,35 +45,39 @@ describe("runAIAction config guards", () => {
 
 describe("runAIAction request handling", () => {
     it("returns the OpenAI-style content on success", async () => {
-        vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({ choices: [{ message: { content: "  hello  " } }] }),
-        }));
+        respond(200, { choices: [{ message: { content: "  hello  " } }] });
         await expect(runAIAction("rewrite", "x", cfg())).resolves.toBe("hello");
     });
 
     it("supports the Ollama native shape", async () => {
-        vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({ message: { content: "ollama out" } }),
-        }));
+        respond(200, { message: { content: "ollama out" } });
         await expect(runAIAction("continue", "x", cfg())).resolves.toBe("ollama out");
     });
 
     it("maps a 401 to an actionable message", async () => {
-        vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-            ok: false,
-            status: 401,
-            text: () => Promise.resolve("unauthorized"),
-        }));
+        respond(401, "unauthorized");
         await expect(runAIAction("rewrite", "x", cfg())).rejects.toThrow(/api key invalid or unauthorized/i);
     });
 
     it("throws on an empty response", async () => {
-        vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-            ok: true,
-            json: () => Promise.resolve({ choices: [{ message: { content: "" } }] }),
-        }));
+        respond(200, { choices: [{ message: { content: "" } }] });
         await expect(runAIAction("rewrite", "x", cfg())).rejects.toThrow(/empty response/i);
+    });
+
+    it("truncates a runaway response", async () => {
+        respond(200, { choices: [{ message: { content: "a".repeat(300_000) } }] });
+        const out = await runAIAction("expand", "x", cfg());
+        expect(out.length).toBeLessThan(210_000);
+        expect(out.endsWith("[Response truncated]")).toBe(true);
+    });
+
+    it("maps a transport timeout to the 60s message", async () => {
+        mockAiFetch.mockRejectedValue(new Error("timed out"));
+        await expect(runAIAction("rewrite", "x", cfg())).rejects.toThrow("AI request timed out after 60s.");
+    });
+
+    it("lets a user abort propagate as AbortError", async () => {
+        mockAiFetch.mockRejectedValue(new DOMException("The operation was aborted.", "AbortError"));
+        await expect(runAIAction("rewrite", "x", cfg())).rejects.toMatchObject({ name: "AbortError" });
     });
 });

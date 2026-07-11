@@ -1,5 +1,59 @@
-import { describe, it, expect } from "vitest";
-import { buildAskMessages, parseEdits } from "./aiChat";
+import { describe, it, expect, vi } from "vitest";
+import { buildAskMessages, parseEdits, streamChat, type ChatMessage } from "./aiChat";
+import { aiFetch } from "./aiTransport";
+import type { AIConfig } from "./aiAssist";
+
+vi.mock("./aiTransport", () => ({ aiFetch: vi.fn() }));
+const mockAiFetch = vi.mocked(aiFetch);
+
+const cfg: AIConfig = {
+    endpoint: "https://api.test/v1/chat/completions",
+    model: "test-model",
+    apiKey: "k",
+};
+const messages: ChatMessage[] = [{ role: "user", content: "hi" }];
+
+/** Make aiFetch behave like the Rust transport: status first, then chunks. */
+const streamResponse = (status: number, chunks: string[]) =>
+    mockAiFetch.mockImplementation(async (_endpoint, _key, _body, opts) => {
+        opts.onStatus?.(status);
+        for (const chunk of chunks) opts.onChunk?.(chunk);
+        return { status, body: chunks.join("") };
+    });
+
+describe("streamChat", () => {
+    it("emits SSE deltas through onToken and returns the full text", async () => {
+        streamResponse(200, [
+            'data: {"choices":[{"delta":{"content":"Hel"}}]}\n',
+            // Two events in one chunk, plus the [DONE] sentinel.
+            'data: {"choices":[{"delta":{"content":"lo"}}]}\ndata: [DONE]\n',
+        ]);
+        const tokens: string[] = [];
+        const out = await streamChat(messages, cfg, { onToken: (d) => tokens.push(d) });
+        expect(tokens).toEqual(["Hel", "lo"]);
+        expect(out).toBe("Hello");
+    });
+
+    it("falls back to a single onToken when the endpoint ignores stream:true", async () => {
+        streamResponse(200, [JSON.stringify({ choices: [{ message: { content: "whole reply" } }] })]);
+        const tokens: string[] = [];
+        const out = await streamChat(messages, cfg, { onToken: (d) => tokens.push(d) });
+        expect(tokens).toEqual(["whole reply"]);
+        expect(out).toBe("whole reply");
+    });
+
+    it("maps a non-OK status to the existing error message using the body", async () => {
+        streamResponse(500, ["upstream exploded"]);
+        await expect(streamChat(messages, cfg)).rejects.toThrow(
+            "AI service unavailable (500). Try again later.\nupstream exploded"
+        );
+    });
+
+    it("propagates an AbortError from the transport", async () => {
+        mockAiFetch.mockRejectedValue(new DOMException("The operation was aborted.", "AbortError"));
+        await expect(streamChat(messages, cfg)).rejects.toMatchObject({ name: "AbortError" });
+    });
+});
 
 describe("parseEdits", () => {
     const block = (s: string, r: string) => `<<<<<<< SEARCH\n${s}\n=======\n${r}\n>>>>>>> REPLACE`;

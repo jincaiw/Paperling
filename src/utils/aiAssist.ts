@@ -9,7 +9,12 @@
  *
  * Local providers like Ollama (with /v1 prefix) and llama.cpp expose the same
  * shape, so this works for fully-local setups too.
+ *
+ * Requests go through the Rust transport (aiTransport) rather than fetch —
+ * see the comment there for why (CORS/CSP, AI-01).
  */
+
+import { aiFetch, type AiHttpResponse } from "./aiTransport";
 
 export type AIAction = "rewrite" | "shorten" | "expand" | "continue" | "translate";
 
@@ -61,22 +66,12 @@ export async function runAIAction(
     }
     if (!cfg.model) throw new Error("AI model not configured.");
 
-    // Compose the user-supplied AbortSignal with our timeout signal so either
-    // path (user clicks close, or 60s elapses) cancels the in-flight request.
-    const timeoutCtrl = new AbortController();
-    const timeoutId = window.setTimeout(() => timeoutCtrl.abort(), AI_REQUEST_TIMEOUT_MS);
-    const onUserAbort = () => timeoutCtrl.abort();
-    signal?.addEventListener("abort", onUserAbort);
-
-    let res: Response;
+    let res: AiHttpResponse;
     try {
-        res = await fetch(cfg.endpoint, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}),
-            },
-            body: JSON.stringify({
+        res = await aiFetch(
+            cfg.endpoint,
+            cfg.apiKey,
+            JSON.stringify({
                 model: cfg.model,
                 messages: [
                     { role: "system", content: SYSTEM_PROMPTS[action] },
@@ -85,26 +80,26 @@ export async function runAIAction(
                 temperature: 0.7,
                 stream: false,
             }),
-            signal: timeoutCtrl.signal,
-        });
+            // Non-streaming request: the 60s budget covers the whole exchange
+            // (totalTimeoutMs), not just time-to-headers.
+            { signal, connectTimeoutMs: AI_REQUEST_TIMEOUT_MS, totalTimeoutMs: AI_REQUEST_TIMEOUT_MS }
+        );
     } catch (e) {
-        // If we tripped the timeout, surface that specifically so the user
-        // doesn't see a generic "AbortError" and think they cancelled it.
-        if (timeoutCtrl.signal.aborted && !signal?.aborted) {
+        // Surface a timeout specifically so the user doesn't see a generic
+        // error and think the endpoint rejected them. User aborts arrive as
+        // AbortError (whose message never contains "timed out") and rethrow.
+        if (e instanceof Error && e.message.includes("timed out")) {
             throw new Error(`AI request timed out after ${AI_REQUEST_TIMEOUT_MS / 1000}s.`);
         }
         throw e;
-    } finally {
-        window.clearTimeout(timeoutId);
-        signal?.removeEventListener("abort", onUserAbort);
     }
 
-    if (!res.ok) {
+    const ok = res.status >= 200 && res.status < 300;
+    if (!ok) {
         // Map common HTTP statuses to actionable messages instead of dumping a
         // raw status + body the user can't interpret (AI-04). The body snippet
         // is appended on a second line for debugging when present.
-        const body = await res.text().catch(() => "");
-        const detail = body.trim().slice(0, 200);
+        const detail = res.body.trim().slice(0, 200);
         let msg: string;
         if (res.status === 401 || res.status === 403) {
             msg = "API key invalid or unauthorized — check Settings → AI.";
@@ -120,7 +115,7 @@ export async function runAIAction(
         throw new Error(detail ? `${msg}\n${detail}` : msg);
     }
 
-    const data = await res.json();
+    const data = JSON.parse(res.body);
     const content =
         data?.choices?.[0]?.message?.content ??
         data?.message?.content ?? // ollama native shape, also handled
