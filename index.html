@@ -1,10 +1,45 @@
 <!doctype html>
-<html lang="en" class="dark">
+<!-- The inline style is a dark default so the very first bytes never paint
+     white; the script below refines it to the user's saved theme before the
+     body renders. Both defend against the Tauri startup white flash (#98). -->
+<html lang="en" style="background-color: #0a0a0a">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Paperling</title>
+    <!-- Render-blocking: paint the correct theme background BEFORE first paint.
+         The window is created hidden and revealed once React mounts, but this
+         still matters as a safety net (and for any early reload) so the webview
+         never flashes white. Must mirror ThemeContext: same 'paperling-theme'
+         key, same valid themes, same OS-preference fallback. Colors are the
+         --bg-primary values from index.css. -->
+    <script>
+      (function () {
+        try {
+          var THEME_BG = {
+            dark: "#0a0a0a",
+            light: "#ffffff",
+            paper: "#f5f0e6",
+            dracula: "#282a36",
+          };
+          var stored = localStorage.getItem("paperling-theme");
+          var theme = THEME_BG[stored]
+            ? stored
+            : window.matchMedia &&
+              window.matchMedia("(prefers-color-scheme: light)").matches
+            ? "light"
+            : "dark";
+          var el = document.documentElement;
+          // Set data-theme so index.css variables resolve correctly the instant
+          // the stylesheet loads, and set the color inline for the pre-CSS frame.
+          el.setAttribute("data-theme", theme);
+          el.style.backgroundColor = THEME_BG[theme];
+        } catch (e) {
+          /* localStorage blocked or corrupt: keep the dark inline default */
+        }
+      })();
+    </script>
     <!-- Fonts and Material Symbols are bundled locally via src/fonts.ts so the
          app renders identically with or without an internet connection. -->
   </head>

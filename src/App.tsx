@@ -98,6 +98,7 @@ import {
 import { getAutoSave } from "./utils/persistence";
 import { resolveRelativePath } from "./utils/resolveRelativePath";
 import { errMessage } from "./utils/errors";
+import { revealMainWindow } from "./utils/appWindow";
 import { TabBar, type TabBarItem } from "./components/TabBar";
 import { TabContextMenu } from "./components/TabContextMenu";
 import {
@@ -232,6 +233,15 @@ function AppContent() {
   useEffect(() => {
     if (mode !== "preview") setPreviewFindOpen(false);
   }, [mode]);
+
+  // Reveal the window once the tree has mounted and painted the themed
+  // background. The window is created hidden (visible:false) so the webview's
+  // white pre-load surface never reaches the screen (#98). A failsafe timeout in
+  // main.tsx and a fallback in the ErrorBoundary guarantee it still shows even
+  // if a crash stops this effect from running.
+  useEffect(() => {
+    revealMainWindow();
+  }, []);
 
   // Derived state
   const isDirty = content !== originalContent;

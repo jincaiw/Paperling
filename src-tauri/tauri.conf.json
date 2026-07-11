@@ -21,7 +21,9 @@
         "decorations": false,
         "transparent": false,
         "center": true,
-        "useHttpsScheme": true
+        "useHttpsScheme": true,
+        "visible": false,
+        "backgroundColor": "#0a0a0a"
       }
     ],
     "security": {

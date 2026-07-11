@@ -1,4 +1,5 @@
 import { Component, ErrorInfo, ReactNode } from "react";
+import { revealMainWindow } from "../utils/appWindow";
 
 interface Props {
     children: ReactNode;
@@ -21,6 +22,10 @@ export class ErrorBoundary extends Component<Props, State> {
 
     componentDidCatch(error: Error, errorInfo: ErrorInfo) {
         console.error("Paperling crashed:", error, errorInfo);
+        // A crash during App's mount means its reveal effect never ran and the
+        // window (created hidden) would stay invisible. Show it here so the user
+        // actually sees this fallback UI instead of a running-but-hidden app.
+        revealMainWindow();
     }
 
     handleReload = () => {
