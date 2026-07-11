@@ -50,3 +50,13 @@ tauri-plugin-process = "2"
 [target."cfg(windows)".dependencies]
 webview2-com = "0.38"
 windows = "0.61"
+
+# Same silent PDF export on macOS: an NSPrintOperation on the hidden WKWebView
+# with a save-to-URL job disposition writes the PDF with no dialogs. Versions
+# track what wry/tauri already resolve so we don't pull a second copy of the
+# Apple bindings.
+[target."cfg(target_os = \"macos\")".dependencies]
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-app-kit = "0.3"
+objc2-web-kit = "0.3"
