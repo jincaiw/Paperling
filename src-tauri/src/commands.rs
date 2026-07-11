@@ -137,9 +137,16 @@ pub async fn read_file(path: String) -> Result<FileData, CommandError> {
         )));
     }
 
-    let content = tokio::fs::read_to_string(&file_path)
+    let raw = tokio::fs::read_to_string(&file_path)
         .await
         .map_err(|e| CommandError::ReadError(e.to_string()))?;
+
+    // Hand the frontend LF-only content. CodeMirror normalises every line
+    // break to `\n` anyway, so serving CRLF verbatim made the editor's first
+    // doc-sync "change" the text and mark a freshly opened file dirty. The
+    // on-disk convention is not lost: `save_file` re-detects it from the file
+    // itself and writes CRLF back. EOL-01.
+    let content = apply_eol(&raw, Eol::Lf);
 
     let name = file_path
         .file_name()
@@ -714,7 +721,8 @@ pub fn set_ai_key(key: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_eol, sanitize_image_name, save_file, search_markdown_tree, validate_rel_path, Eol,
+        apply_eol, read_file, sanitize_image_name, save_file, search_markdown_tree,
+        validate_rel_path, Eol,
     };
 
     #[test]
@@ -806,6 +814,28 @@ mod tests {
         // Never doubles up if some \r slipped in.
         assert_eq!(apply_eol("a\r\nb", Eol::Crlf), "a\r\nb");
         assert_eq!(apply_eol("a\r\nb", Eol::Lf), "a\nb");
+    }
+
+    #[test]
+    fn read_file_normalizes_crlf_to_lf() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let dir =
+                std::env::temp_dir().join(format!("paperling-read-eol-{}", std::process::id()));
+            std::fs::create_dir_all(&dir).unwrap();
+            let path = dir.join("crlf.md").to_string_lossy().to_string();
+
+            // A CRLF file must come back LF-only, matching what CodeMirror
+            // will hold — otherwise a freshly opened file reads as dirty.
+            std::fs::write(&path, "one\r\ntwo\r\n").unwrap();
+            let fd = read_file(path).await.unwrap();
+            assert_eq!(fd.content, "one\ntwo\n");
+
+            std::fs::remove_dir_all(&dir).ok();
+        });
     }
 
     #[test]
