@@ -81,9 +81,10 @@ export function ExportMenu({ fileName, getExportHtml, onSuccess, onError }: Expo
                 }
             } else {
                 const result = await mod.exportToPDF(htmlContent, fileName, theme, font, fontSize);
-                // Only the Windows save path can confirm a written file. The
-                // print-dialog fallback ('printing') is its own visible feedback,
-                // so we don't claim success there. 'cancelled' → stay silent.
+                // Only the native save path (Windows/macOS) can confirm a
+                // written file. The Linux print-dialog fallback ('printing') is
+                // its own visible feedback, so we don't claim success there.
+                // 'cancelled' → stay silent.
                 if (result === 'saved') onSuccess?.('PDF');
             }
         } catch (error) {

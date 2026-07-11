@@ -515,14 +515,17 @@ export async function exportToDocx(
 // ---------------------------------------------------------------------------
 // PDF export
 //
-// We deliberately do NOT rasterize or hand-roll a PDF layout. Instead we render
-// the same standalone HTML we produce for HTML export inside an isolated,
-// off-screen iframe and drive the webview's own print pipeline ("Save as PDF" /
-// "Microsoft Print to PDF"). That yields a vector PDF that matches the preview
-// exactly: real Unicode and color emoji, selectable/searchable text and working
-// links — none of which the old jsPDF standard-font path could do (it encoded
-// text as single-byte WinAnsi, so anything outside Latin-1 — emoji, smart
-// quotes, em dashes — printed as garbage).
+// We deliberately do NOT rasterize or hand-roll a PDF layout. Instead we hand
+// the same standalone HTML we produce for HTML export to a real print engine.
+// That yields a vector PDF that matches the preview exactly: real Unicode and
+// color emoji, selectable/searchable text and working links — none of which the
+// old jsPDF standard-font path could do (it encoded text as single-byte
+// WinAnsi, so anything outside Latin-1 — emoji, smart quotes, em dashes —
+// printed as garbage).
+//
+// Windows and macOS go through the Rust `export_pdf` command, which writes the
+// PDF silently (WebView2 PrintToPdf / NSPrintOperation). Linux renders in an
+// isolated off-screen iframe and drives the webview's own print pipeline.
 // ---------------------------------------------------------------------------
 
 const PRINT_FRAME_ID = '__paperling_print_frame';
@@ -622,16 +625,18 @@ function printHtmlDocument(html: string): Promise<void> {
 // PDF must be legible on white paper, so we always render the light theme. The
 // on-screen HTML export still honours the chosen theme.
 //
-// On Windows we ask once where to save (like HTML export) and hand the HTML to
-// the Rust `export_pdf` command, which renders it in a hidden WebView2 and
-// writes a real PDF via the native PrintToPdf engine — no print dialog. Other
-// platforms fall back to the webview's print pipeline (`window.print()`), the
-// only cross-platform route to a vector PDF without bundling a headless browser.
+// On Windows and macOS we ask once where to save (like HTML export) and hand
+// the HTML to the Rust `export_pdf` command, which renders it in a hidden
+// webview and writes a real PDF via the native print engine — no print dialog.
+// The iframe fallback is NOT an option on macOS: WKWebView has no JS
+// `window.print()` at all (wry only shims it for WebView2), so it silently did
+// nothing there (#96). Linux keeps the print-pipeline fallback, which WebKitGTK
+// does implement.
 // Resolves:
-//   'saved'    — Windows: the PDF was written to the chosen path.
-//   'cancelled'— Windows: the user dismissed the save dialog.
-//   'printing' — other platforms: the native print dialog was handed off. We
-//                can't tell save from cancel there, so the caller must NOT claim
+//   'saved'    — Windows/macOS: the PDF was written to the chosen path.
+//   'cancelled'— Windows/macOS: the user dismissed the save dialog.
+//   'printing' — Linux: the native print dialog was handed off. We can't tell
+//                save from cancel there, so the caller must NOT claim
 //                "Exported" — the system dialog is its own feedback. EXPORT-01.
 export type PdfExportResult = 'saved' | 'cancelled' | 'printing';
 
@@ -654,10 +659,11 @@ export async function exportToPDF(
     const cleaned = await prepareExportHtml(htmlContent);
     const fullHTML = generateHTML(cleaned, title, 'light', font, fontSize, true);
 
-    const isWindows =
-        typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent);
+    const canSaveSilently =
+        typeof navigator !== 'undefined' &&
+        /Windows|Macintosh/i.test(navigator.userAgent);
 
-    if (isWindows) {
+    if (canSaveSilently) {
         const filePath = await save({
             defaultPath: `${title}.pdf`,
             filters: [{ name: 'PDF', extensions: ['pdf'] }],
