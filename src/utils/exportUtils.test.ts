@@ -41,6 +41,16 @@ describe("generateHTML", () => {
         expect(out).toContain("'Inter'");
         expect(out).toContain("18px"); // large base size
     });
+
+    // Mermaid SVGs carry an inline natural-size max-width from the preview;
+    // export CSS must scale them to the column or they render tiny.
+    it("ships column-scaling CSS for rendered mermaid diagrams", () => {
+        const out = generateHTML("<p>x</p>", "t", "dark", "inter", "medium");
+        expect(out).toContain(".mermaid-rendered > svg");
+        expect(out).toContain("max-width: none !important");
+        // Diagrams must not be sliced mid-box when printing to PDF.
+        expect(out).toMatch(/pre, blockquote, table, img, tr, \.mermaid-rendered \{/);
+    });
 });
 
 describe("prepareExportHtml", () => {

@@ -140,7 +140,7 @@ function generateExportCSS(theme: Theme, font: FontFamily, fontSize: FontSize): 
                 print-color-adjust: exact;
             }
             /* Keep atomic blocks and their headings from splitting awkwardly. */
-            pre, blockquote, table, img, tr {
+            pre, blockquote, table, img, tr, .mermaid-rendered {
                 page-break-inside: avoid;
                 break-inside: avoid;
             }
@@ -290,6 +290,19 @@ function generateExportCSS(theme: Theme, font: FontFamily, fontSize: FontSize): 
             height: auto;
             border-radius: 0.375rem;
             margin: 1rem 0;
+        }
+
+        /* Exports capture the preview DOM, so rendered mermaid SVGs arrive
+           with mermaid's inline natural-size max-width; mirror the preview's
+           column scaling (see index.css .mermaid-rendered). The container's
+           Tailwind classes don't exist in exports, hence the margin here. */
+        .mermaid-rendered {
+            margin: 1rem 0;
+        }
+        .mermaid-rendered > svg {
+            width: 100%;
+            height: auto;
+            max-width: none !important;
         }
 
         /* Task lists */

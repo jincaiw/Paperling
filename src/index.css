@@ -724,6 +724,18 @@ select:focus-visible,
   color: var(--text-primary);
 }
 
+/* Mermaid caps its SVG at natural size via an INLINE max-width, which left
+   small diagrams (and their text) tiny in the 800px column; only !important
+   can beat an inline style. Scaling to the column keeps text vector-crisp.
+   Wide diagrams already rendered at column width and are unaffected. The
+   child combinator keeps nested icon <svg>s (architecture/icon shapes) out
+   of reach. */
+.mermaid-rendered > svg {
+  width: 100%;
+  height: auto;
+  max-width: none !important;
+}
+
 /* Tailwind v4 Preflight resets `ul, ol { list-style: none }`, so the markers
    must be re-declared here or every bullet/number in the preview disappears. */
 .markdown-body ul {
