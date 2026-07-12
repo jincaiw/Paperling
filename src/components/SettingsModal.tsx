@@ -319,7 +319,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                 {matches("open files in reader mode") && (
                                     // No window event: App reads the flag live at each
                                     // file open (same pattern as toggle-ai-panel).
-                                    <ToggleRow label="Open files in reader mode" description="Every file opens read-first — editing stays one click away" checked={openInReader}
+                                    <ToggleRow label="Open files in reader mode" description="Every file opens read-first; editing stays one click away" checked={openInReader}
                                         onChange={(v) => { setOpenInReaderLocal(v); setOpenInReader(v); }} />
                                 )}
                             </div>
