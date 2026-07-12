@@ -8,6 +8,7 @@ import {
     getWordWrap, setWordWrap,
     getSpellCheck, setSpellCheck,
     getAutoSave, setAutoSave,
+    getOpenInReader, setOpenInReader,
 } from "../utils/persistence";
 import { attachFocusTrap } from "../utils/focusTrap";
 import { isValidEndpoint, runAIAction } from "../utils/aiAssist";
@@ -97,6 +98,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const [wordWrap, setWordWrapLocal] = useState(getWordWrap);
     const [spellCheck, setSpellCheckLocal] = useState(getSpellCheck);
     const [autoSave, setAutoSaveLocal] = useState(getAutoSave);
+    const [openInReader, setOpenInReaderLocal] = useState(getOpenInReader);
 
     const [ai, setAi] = useState(getAIConfig);
     const [aiEnabled, setAiEnabledLocal] = useState(getAIEnabled);
@@ -313,6 +315,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                 {matches("autosave") && (
                                     <ToggleRow label="Autosave" description="Save automatically a moment after you stop typing" checked={autoSave}
                                         onChange={(v) => { setAutoSaveLocal(v); setAutoSave(v); fire("paperling:autosave-toggle", v); }} />
+                                )}
+                                {matches("open files in reader mode") && (
+                                    // No window event: App reads the flag live at each
+                                    // file open (same pattern as toggle-ai-panel).
+                                    <ToggleRow label="Open files in reader mode" description="Every file opens read-first — editing stays one click away" checked={openInReader}
+                                        onChange={(v) => { setOpenInReaderLocal(v); setOpenInReader(v); }} />
                                 )}
                             </div>
                         )}

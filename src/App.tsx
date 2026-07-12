@@ -76,6 +76,7 @@ import {
   getAIEnabled,
   initAIKey,
   getLastFile,
+  getOpenInReader,
   getSavedViewMode,
   getSession,
   setSession,
@@ -451,6 +452,14 @@ function AppContent() {
       if (outgoing !== fileData.path) {
         requestAnimationFrame(() => window.dispatchEvent(new CustomEvent("paperling:scroll-top")));
       }
+      // "Open files in reader" applies to every USER file open, read live so
+      // a Settings change takes effect without a restart. Mode is global
+      // across tabs, so opening a file mid-edit flips the view — that's the
+      // setting's promise. Same-path reloads are excluded: the external-change
+      // watcher reloads silently through here (EXT-01) and must not yank an
+      // editing session back to preview. New files still force code mode
+      // (handleNewFile). READ-01.
+      if (outgoing !== fileData.path && getOpenInReader()) setMode("preview");
     } catch (err) {
       console.error("Failed to load file:", err);
       // Surface the actual error from Rust so "File too large" / "File not
@@ -461,7 +470,7 @@ function AppContent() {
     } finally {
       setIsLoading(false);
     }
-  }, [showToast, snapshotActiveTab, commitTabs, setActiveTab, newTabId, bumpDocSwap]);
+  }, [showToast, snapshotActiveTab, commitTabs, setActiveTab, newTabId, bumpDocSwap, setMode]);
 
   // Settings flags above persist themselves via usePersistedState; the matching
   // setters (setSavedViewMode, setSplitRatio, …) are passed into that hook.
@@ -628,6 +637,8 @@ function AppContent() {
           150
         );
       }
+      // Applied once for the whole restored session, not per tab. READ-01.
+      if (getOpenInReader()) setMode("preview");
       setBooting(false);
     })();
     // Run only once on mount

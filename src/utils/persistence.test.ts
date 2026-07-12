@@ -5,6 +5,7 @@ import {
     getAIConfig, setAIConfig,
     getWordWrap,
     migrateLegacyKeys, getLastFile,
+    getOpenInReader, setOpenInReader,
 } from "./persistence";
 
 beforeEach(() => localStorage.clear());
@@ -49,6 +50,18 @@ describe("recent files", () => {
         expect(getRecentFiles().map((f) => f.path)).toEqual(["/b.md"]);
         clearRecentFiles();
         expect(getRecentFiles()).toEqual([]);
+    });
+});
+
+describe("open in reader", () => {
+    it("defaults off and round-trips", () => {
+        expect(getOpenInReader()).toBe(false);
+        setOpenInReader(true);
+        expect(getOpenInReader()).toBe(true);
+    });
+    it("treats a malformed stored value as the default", () => {
+        localStorage.setItem("paperling:openInReader", "{not json");
+        expect(getOpenInReader()).toBe(false);
     });
 });
 

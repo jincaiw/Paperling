@@ -131,6 +131,13 @@ const KEY_AUTO_SAVE = "paperling:autoSave";
 export const getAutoSave = (): boolean => safeGet<boolean>(KEY_AUTO_SAVE, false);
 export const setAutoSave = (v: boolean): void => safeSet(KEY_AUTO_SAVE, v);
 
+// "Always open files in reader": every file open switches to preview mode,
+// for the read-mostly audience. New files still open in code mode, and the
+// flag is read live at each open (no cached state to keep in sync). READ-01.
+const KEY_OPEN_IN_READER = "paperling:openInReader";
+export const getOpenInReader = (): boolean => safeGet<boolean>(KEY_OPEN_IN_READER, false);
+export const setOpenInReader = (v: boolean): void => safeSet(KEY_OPEN_IN_READER, v);
+
 // Master switch for every AI surface (title-bar button, side panel, toolbar
 // sparkle, Alt+J, command palette entry). On by default; flipped in Settings.
 const KEY_AI_ENABLED = "paperling:aiEnabled";
