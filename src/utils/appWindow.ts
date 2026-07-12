@@ -17,7 +17,11 @@ export async function revealMainWindow(): Promise<void> {
         const win = Window.getCurrent();
         await win.show();
         await win.setFocus();
-    } catch {
-        /* no Tauri window (browser dev mode) or already shown */
+    } catch (err) {
+        // Browser dev mode (no Tauri window) lands here harmlessly — but so
+        // does an ACL denial, which once shipped builds whose window could
+        // NEVER be shown (show/set-focus missing from capabilities). Log it:
+        // a silent failure here means an invisible app.
+        console.error("revealMainWindow failed:", err);
     }
 }
