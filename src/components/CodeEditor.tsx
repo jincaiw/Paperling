@@ -36,6 +36,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { matchWikilinkPrefix, rankFileNames, toWikiName } from "../utils/wikilinkComplete";
 import { applyTableOp, findTableAt, locateCell, type Align } from "../utils/tableModel";
 import type { Scroller } from "../utils/scrollSync";
+import { useLocale } from "../context/LocaleContext";
 
 interface CodeEditorProps {
     content: string;
@@ -171,6 +172,7 @@ function CodeEditorImpl({
     onReviewResolve,
     docSwapId,
 }: CodeEditorProps) {
+    const { t: tr } = useLocale();
     const containerRef = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
 
@@ -783,11 +785,11 @@ function CodeEditorImpl({
             {reviewActive && (
                 <div className="flex items-center gap-2 px-3 h-9 shrink-0 bg-[var(--bg-secondary)] border-b border-[var(--accent)] text-xs no-select">
                     <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] animate-pulse"></span>
-                    <span className="text-[var(--text-primary)] font-medium">AI suggested changes</span>
-                    <span className="text-[var(--text-muted)] hidden sm:inline">accept or reject each below, or all at once:</span>
+                    <span className="text-[var(--text-primary)] font-medium">{tr("AI suggested changes")}</span>
+                    <span className="text-[var(--text-muted)] hidden sm:inline">{tr("accept or reject each below, or all at once:")}</span>
                     <div className="ml-auto flex items-center gap-1.5">
-                        <button onClick={rejectAllChanges} className="px-2.5 py-1 rounded-[var(--radius-sm)] font-medium text-[var(--danger)] hover:bg-[var(--danger)]/10 transition-colors">Reject all</button>
-                        <button onClick={acceptAllChanges} className="px-2.5 py-1 rounded-[var(--radius-sm)] font-medium bg-[var(--accent)] text-[var(--accent-text)] hover:opacity-90 transition-colors">Accept all</button>
+                        <button onClick={rejectAllChanges} className="px-2.5 py-1 rounded-[var(--radius-sm)] font-medium text-[var(--danger)] hover:bg-[var(--danger)]/10 transition-colors">{tr("Reject all")}</button>
+                        <button onClick={acceptAllChanges} className="px-2.5 py-1 rounded-[var(--radius-sm)] font-medium bg-[var(--accent)] text-[var(--accent-text)] hover:opacity-90 transition-colors">{tr("Accept all")}</button>
                     </div>
                 </div>
             )}

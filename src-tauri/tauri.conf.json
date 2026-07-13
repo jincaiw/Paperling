@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Paperling",
-  "version": "1.0.49",
-  "identifier": "com.saqla.marklite",
+  "version": "1.0.50",
+  "identifier": "com.mujizi.paperling",
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
@@ -36,9 +36,9 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM5MkNBMjY0NDQ0MkFEMEQKUldRTnJVSkVaS0lzeWNZUHRrL1AxNEpicXFpUkJmS1FGSFAxdlU1c2Z3YnR5SkRWc2xWdWt3R2MK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFDMkE1MzlCOTdCRTJFRjMKUldUekxyNlhtMU1xSFBvMllOV3FRamZsNTdyL0FaVEx3MitTczA0QjhnZFBLa3JKV3c4TThMQWUK",
       "endpoints": [
-        "https://github.com/Razee4315/Paperling/releases/latest/download/latest.json"
+        "https://github.com/jincaiw/Paperling/releases/latest/download/latest.json"
       ]
     }
   },

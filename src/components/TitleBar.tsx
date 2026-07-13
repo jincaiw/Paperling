@@ -3,6 +3,7 @@ import type { MouseEvent } from "react";
 import { Window } from "@tauri-apps/api/window";
 import { SettingsMenu } from "./SettingsMenu";
 import { ExportMenu } from "./ExportMenu";
+import { useLocale } from "../context/LocaleContext";
 
 interface TitleBarProps {
     fileName?: string;
@@ -20,6 +21,7 @@ interface TitleBarProps {
 }
 
 function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, getExportHtml, onExportSuccess, onExportError, onToggleAI, aiActive, isFullscreen, onToggleFullscreen }: TitleBarProps) {
+    const { t } = useLocale();
     const handleMinimize = async () => {
         try {
             const appWindow = Window.getCurrent();
@@ -119,10 +121,10 @@ function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, getE
                             {fileName || "Paperling"}
                         </span>
                         {!fileName && (
-                            <span className="text-[var(--text-muted)] text-xs ml-1 hidden sm:inline">— drop a .md file or Ctrl+O</span>
+                            <span className="text-[var(--text-muted)] text-xs ml-1 hidden sm:inline">— {t("drop a .md file or Ctrl+O")}</span>
                         )}
                         {isDirty && (
-                            <span className="text-[var(--status-unsaved)] ml-1 italic text-xs">— Edited</span>
+                            <span className="text-[var(--status-unsaved)] ml-1 italic text-xs">— {t("Edited")}</span>
                         )}
                     </div>
 
@@ -133,22 +135,22 @@ function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, getE
                             {onNewFile && (
                                 <button
                                     onClick={onNewFile}
-                                    aria-label="New file"
+                                    aria-label={t("New file")}
                                     className="flex items-center gap-1 px-2 py-1 rounded-[var(--radius-md)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors text-xs"
                                     title="New File (Ctrl+N)"
                                 >
                                     <span className="material-symbols-outlined text-[16px]">edit_note</span>
-                                    <span className="hidden sm:inline">New</span>
+                                    <span className="hidden sm:inline">{t("New")}</span>
                                 </button>
                             )}
                             <button
                                 onClick={onOpenFile}
-                                aria-label="Open file"
+                                aria-label={t("Open file")}
                                 className="flex items-center gap-1 px-2 py-1 rounded-[var(--radius-md)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors text-xs"
                                 title="Open File (Ctrl+O)"
                             >
                                 <span className="material-symbols-outlined text-[16px]">folder_open</span>
-                                <span className="hidden sm:inline">Open</span>
+                                <span className="hidden sm:inline">{t("Open")}</span>
                             </button>
                             <ExportMenu
                                 fileName={fileName || 'document.md'}
@@ -159,9 +161,9 @@ function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, getE
                             {onToggleAI && (
                                 <button
                                     onClick={onToggleAI}
-                                    aria-label="AI assistant"
+                                    aria-label={t("AI assistant")}
                                     aria-pressed={aiActive}
-                                    title="AI assistant"
+                                    title={t("AI assistant")}
                                     className={`flex items-center gap-1 px-2.5 py-1 rounded-[var(--radius-md)] transition-colors text-xs font-semibold tracking-wide ${aiActive
                                         ? "bg-[var(--bg-hover)] text-[var(--accent)]"
                                         : "hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
@@ -181,14 +183,14 @@ function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, getE
                     <div className="w-[1px] h-4 bg-[var(--border)] mx-1"></div>
                     <button
                         onClick={handleMinimize}
-                        aria-label="Minimize"
+                        aria-label={t("Minimize")}
                         className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                     >
                         <span className="material-symbols-outlined text-[18px]">remove</span>
                     </button>
                     <button
                         onClick={handleMaximize}
-                        aria-label={isFullscreen ? "Exit fullscreen" : "Maximize"}
+                        aria-label={t(isFullscreen ? "Exit fullscreen" : "Maximize")}
                         title={isFullscreen ? "Exit fullscreen (F11)" : "Maximize"}
                         className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                     >
@@ -196,7 +198,7 @@ function TitleBarImpl({ fileName, isDirty, filePath, onOpenFile, onNewFile, getE
                     </button>
                     <button
                         onClick={handleCloseClick}
-                        aria-label="Close"
+                        aria-label={t("Close")}
                         className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-[var(--danger)] text-[var(--text-secondary)] hover:text-[var(--accent-text)] transition-colors"
                     >
                         <span className="material-symbols-outlined text-[18px]">close</span>

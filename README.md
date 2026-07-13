@@ -1,231 +1,68 @@
-<p align="center">
-  <img src="docs/public/readme-banner.png" alt="The Paperling paper mascot walking with its pencil, book, flask, diagram, magnifier, and rocket" width="100%">
-</p>
+# Paperling
 
-<p align="center">
-  <img src="public/icon.svg" width="80" alt="Paperling Logo">
-  <h1 align="center">Paperling</h1>
-</p>
+> 一款本地优先、开箱即用的 Markdown 编辑器。用原生性能写作，用实时预览阅读。
 
-<p align="center">
-  <strong>A no-setup Markdown reader and editor.</strong> Open any <code>.md</code> file and read it beautifully, edit with live preview (math, chemistry, and diagrams as you type), and use an optional free AI that proposes edits you accept or reject inline. No vaults, no plugins, no heavy app. Built with Tauri, React, and TypeScript.
-</p>
+[![最新版本](https://img.shields.io/github/v/release/jincaiw/Paperling?label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC)](https://github.com/jincaiw/Paperling/releases/latest)
+[![许可证](https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF%E8%AF%81-Apache--2.0-blue)](LICENSE)
+[![平台](https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Windows%20%7C%20macOS%20%7C%20Linux-555)](https://github.com/jincaiw/Paperling/releases/latest)
 
-<p align="center">
-  <a href="https://github.com/Razee4315/Paperling/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Razee4315/Paperling?color=2ea043&label=download"></a>
-  <a href="https://github.com/Razee4315/Paperling/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/Razee4315/Paperling/total?color=2ea043"></a>
-  <a href="https://github.com/Razee4315/Paperling/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Razee4315/Paperling?style=flat"></a>
-  <img alt="Platforms" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-555">
-  <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-blue"></a>
-  <img alt="Built with Tauri" src="https://img.shields.io/badge/built%20with-Tauri%20%2B%20Rust-FFC131">
-</p>
+[下载最新版本](https://github.com/jincaiw/Paperling/releases/latest) · [安装与使用教程](https://paper.mujizi.com/guide/) · [问题反馈](https://github.com/jincaiw/Paperling/issues)
 
-<p align="center">
-  <a href="https://github.com/Razee4315/Paperling/releases/latest"><b>⬇ Download</b></a> ·
-  <a href="https://razee4315.github.io/Paperling/"><b>Website</b></a> ·
-  <a href="#features"><b>Features</b></a> ·
-  <a href="CONTRIBUTING.md"><b>Contribute</b></a>
-</p>
+Paperling 打开任意 `.md` 文件即可开始。它提供编辑/阅读/分屏三种视图，并原生支持 GFM、数学公式、化学公式、Mermaid 图表、表格、图片、搜索替换和可选 AI 助手。文档默认保存在本地；AI 仅在你主动配置服务商后才会发起网络请求。
 
-<p align="center">
-  <img src="images/split-view.png" width="860" alt="Paperling in split view — Markdown source on the left, live preview with a table, task list and callout on the right">
-</p>
+## 界面预览
 
-## Why Paperling?
+| 分屏实时预览 | 文件浏览与阅读模式 |
+| --- | --- |
+| ![Paperling 分屏编辑与实时预览](images/split-view.png) | ![Paperling 文件浏览器](images/file-explorer.png) |
 
-<img src="images/art/scene-writing-desk.png" width="320" align="right" alt="The Paperling mascot typing at a cozy desk with a split-view monitor, coffee, and a plant">
+![Paperling 实时渲染公式、图表和代码](images/showcase.png)
 
-As a developer, I frequently work with markdown files for documentation, notes, and project READMEs. The frustration of opening `.md` files in Notepad or basic text editors, only to see raw, unformatted text with all the symbols and syntax cluttering the content, inspired me to build Paperling.
+## 功能
 
-I wanted something you just open and write in: it renders Markdown beautifully while keeping the raw text one keystroke away. Tools like Obsidian are powerful, but vaults, graphs, and plugins are overkill if you only want to open a file and edit it. Paperling stays out of that complexity and adds the things I actually reach for: math and chemistry that render live, and an optional free AI (bring your own model) that proposes edits you accept or reject right in the text.
+- **专注写作**：编辑、阅读与分屏模式；自动保存、标签页、文件浏览器与大纲。
+- **实时渲染**：GitHub 风格 Markdown、任务列表、表格、KaTeX、化学公式、Mermaid、代码高亮与图片预览。
+- **高效编辑**：命令面板、斜杠命令、格式工具栏、查找替换、智能粘贴、表格可视化编辑。
+- **可控 AI**：兼容 OpenAI API 的模型；以差异形式提出修改，确认后才写入文件；密钥存于系统钥匙串。
+- **本地优先**：不需要账号；可离线编辑；Windows、macOS、Linux 均有原生安装包。
 
-<br clear="right">
+## 安装
 
-> The little paper fellow above lives inside the app too: it greets you on the welcome screen, gives you a 30-second tour on first launch, and naps in the corners of empty panels.
+从 [Releases](https://github.com/jincaiw/Paperling/releases/latest) 下载与你的平台对应的文件：
 
-## Screenshots
+| 平台 | 推荐安装包 | 免安装方式 |
+| --- | --- | --- |
+| Windows 10/11 | `.msi` 或 `-setup.exe` | `-portable.exe`，下载后直接运行 |
+| macOS | `.dmg` | 将应用拖入“应用程序”后打开 |
+| Debian / Ubuntu | `.deb` | `.AppImage` 可直接运行 |
+| Fedora / RHEL | `.rpm` | `.AppImage` 可直接运行 |
 
-**Math, chemistry, diagrams, and code — all rendered live as you type.**
+首次打开未签名的安装包时，Windows SmartScreen 或 macOS Gatekeeper 可能提示风险；请确认来源是本仓库的 Release 后继续。完整的安装、更新、卸载和常见问题请看 [安装与使用教程](https://paper.mujizi.com/guide/)。
 
-<p align="center">
-  <img src="images/showcase.png" width="860" alt="Paperling preview rendering an integral equation, a balanced chemical reaction, a Mermaid flowchart, and a syntax-highlighted code block">
-</p>
-
-### Four themes
-
-Dark, Light, Paper, and Dracula.
-
-|                                   Dark                                   |                                   Light                                    |                                   Paper                                    |
-| :----------------------------------------------------------------------: | :------------------------------------------------------------------------: | :------------------------------------------------------------------------: |
-| <img src="images/theme-dark.png" width="280" alt="Paperling Dark theme"> | <img src="images/theme-light.png" width="280" alt="Paperling Light theme"> | <img src="images/theme-paper.png" width="280" alt="Paperling Paper theme"> |
-
-### File explorer &amp; command palette
-
-|                                          File explorer                                          |                                  Command palette                                   |
-| :---------------------------------------------------------------------------------------------: | :--------------------------------------------------------------------------------: |
-| <img src="images/file-explorer.png" width="420" alt="Paperling file explorer with reader mode"> | <img src="images/command-palette.png" width="420" alt="Paperling command palette"> |
-
-## Features
-
-### <img src="images/art/icon-pencil.png" width="26" alt=""> Writing
-
-- **Clean Interface** — minimal UI that stays out of your way
-- **Reader / Code / Split view** — Ctrl+E to toggle, Ctrl+\\ for split with bidirectional scroll sync
-- **Focus mode** — dim non-active lines so you can think
-- **Typewriter mode** — caret stays vertically centered
-- **Formatting toolbar** (toggleable) and shortcuts: Ctrl+B / Ctrl+I / Ctrl+K / Ctrl+/
-- **Slash commands** — type `/` at line start for headings, lists, tables, math, mermaid, callouts, and more
-- **Auto-pair** brackets, quotes, and code marks; **list/quote continuation** on Enter
-- **Tab in tables** moves between cells; auto-creates new rows
-- **Visual table editing**: a toolbar appears when the caret is in a table, with buttons to add or delete rows and columns, set column alignment, and tidy the layout
-- **Find & Replace** (Ctrl+F / Ctrl+H) with regex and match counter
-- **Smart paste** — URL → link, rich HTML → markdown, TSV → GFM table
-
-### <img src="images/art/icon-flask.png" width="26" alt=""> Preview
-
-- **GitHub Flavored Markdown** with task lists, tables, strikethrough
-- **Code blocks** with syntax highlighting and one-click copy
-- **Math** via KaTeX (`$inline$`, `$$block$$`) — loaded only when needed
-- **Chemistry** via mhchem — `$\ce{2 H2 + O2 -> 2 H2O}$`, ions, isotopes, Kröger-Vink defects
-- **Mermaid diagrams** (` ```mermaid `) — flowcharts, sequence, class, state, gantt, ER, mindmaps
-- **Image lightbox** — click to zoom; lazy loading
-- **Interactive task checkboxes** — toggling writes back to source
-- **Heading anchors** with click-to-jump
-- **Wikilinks** `[[other-file]]` resolve in the same folder
-- **Frontmatter** rendered as an editable Properties card
-
-### <img src="images/art/icon-sparkles.png" width="26" alt=""> AI assistant
-
-<p align="center">
-  <img src="images/art/scene-ai-magic.png" width="720" alt="The Paperling mascot in a wizard hat waving a wand over a page, turning messy scribbles into clean text">
-</p>
-
-- **AI side panel** — open it from the **AI** button next to Export (or `Alt+J` / `⌘J`). A VS Code-style chat docked on the right; content reflows beside it.
-- **Ask mode** — chat about the current document: summarize it, find something, ask questions. Answers stream in live.
-- **Agent mode** — describe a change in plain language and the AI proposes edits. They appear as an **inline diff in the editor** (green added / red removed) which you **review and accept or reject** — per change, or all at once. Nothing is written until you approve.
-- **Selection assist** — select text and press `Alt+J` / `⌘J` to rewrite, shorten, expand, continue, or translate it in place.
-- **Bring your own model** — works with any OpenAI-compatible endpoint: OpenAI, Google Gemini (OpenAI-compat), Ollama, llama.cpp, and more. Configure it in **Settings → AI**; your API key is stored in the OS keychain.
-
-### <img src="images/art/icon-folder.png" width="26" alt=""> Files & workflow
-
-- **Command palette** (Ctrl+P) — search commands, files, headings, toggles
-- **Cheatsheet** (`?`) — every shortcut categorized and searchable
-- **Settings modal** (Ctrl+,) — sidebar nav with Appearance / Editor / AI / About
-- **New File** (Ctrl+N) and **Save As** (Ctrl+Shift+S)
-- **Auto-save** (optional, debounced) with status indicator
-- **External-change detection** — reload or keep your version when the file changes outside the app
-- **Recent files** on the welcome screen — missing files marked
-- **Restore last opened file** on launch
-- **File Explorer** with folder navigation
-- **Outline pane** that follows the cursor
-
-### <img src="images/art/icon-theme-swatches.png" width="26" alt=""> Customization
-
-- **Four themes** — Dark, Light, Paper, Dracula
-- **Five fonts** — Inter, Merriweather, Lora, Source Serif, Fira Sans
-- **Three font sizes**
-- **WCAG-friendly** — visible focus rings, `prefers-reduced-motion` respected
-
-### <img src="images/art/icon-bolt.png" width="26" alt=""> Platform
-
-- **Native performance** — built with Tauri
-- **Cross-platform** — Windows, macOS, Linux
-
-## <img src="images/art/icon-rocket.png" width="30" alt=""> Installation
-
-Download the latest release from the [Releases](https://github.com/Razee4315/Paperling/releases) page.
-
-### Available Formats
-
-| Platform    | Formats                                    |
-| ----------- | ------------------------------------------ |
-| **Windows** | `.msi` installer · `.exe` (NSIS) installer |
-| **macOS**   | `.dmg` (Apple Silicon)                     |
-| **Linux**   | `.AppImage` · `.deb` · `.rpm`              |
-
-> **Note:** builds aren't code-signed yet, so Windows SmartScreen or macOS
-> Gatekeeper may warn on first launch. On Windows choose _More info → Run anyway_;
-> on macOS right-click the app and choose _Open_. Auto-update packages are signed
-> and verified before installing.
-
-## Development
-
-### Prerequisites
-
-- [Node.js](https://nodejs.org/) (v18+)
-- [Bun](https://bun.sh/) (recommended) or npm
-- [Rust](https://www.rust-lang.org/tools/install)
-
-### Setup
+## 开发
 
 ```bash
-# Clone the repository
-git clone https://github.com/Razee4315/Paperling.git
+git clone https://github.com/jincaiw/Paperling.git
 cd Paperling
-
-# Install dependencies
 bun install
-
-# Run in development mode
 bun run tauri dev
-
-# Build for production
-bun run tauri build
 ```
 
-## <img src="images/art/icon-keyboard.png" width="30" alt=""> Keyboard Shortcuts
+提交前可执行：
 
-A few essentials — press `?` inside the app for the full searchable list.
+```bash
+npm test
+npm run check:i18n
+npm run build
+cd src-tauri && cargo test --locked
+```
 
-| Action                  | Shortcut                           |
-| ----------------------- | ---------------------------------- |
-| Command palette         | Ctrl+P                             |
-| Cheatsheet              | ?                                  |
-| Settings                | Ctrl+,                             |
-| New file                | Ctrl+N                             |
-| Open file               | Ctrl+O                             |
-| Save                    | Ctrl+S                             |
-| Save As                 | Ctrl+Shift+S                       |
-| Toggle Reader / Code    | Ctrl+E                             |
-| Toggle Split view       | Ctrl+\\                            |
-| File explorer / Outline | Ctrl+Shift+E / Ctrl+Shift+O        |
-| Find / Replace          | Ctrl+F / Ctrl+H                    |
-| Bold / Italic / Link    | Ctrl+B / Ctrl+I / Ctrl+K           |
-| Toggle blockquote       | Ctrl+/                             |
-| AI panel / assist       | Alt+J (Windows) · ⌘J (macOS/Linux) |
+## 发布与本地化规范
 
-## Tech Stack
+- 用户可见文案必须通过 `t()` / `tr()` 进入翻译表；CI 会执行 `check:i18n` 阻止缺失中文键。
+- 发布前运行完整测试、检查 `CHANGELOG.md`，并同步三个版本来源：`package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`。
+- 推送 `v*` 标签后，GitHub Actions 构建 Windows 安装包与 Portable、macOS DMG、Linux DEB/RPM/AppImage，并附加校验和。
 
-- **Frontend**: React, TypeScript, Tailwind CSS
-- **Backend**: Rust, Tauri v2
-- **Build**: Vite
+## 许可证
 
-## Contributing
-
-<img src="images/art/mascot-hug.png" width="130" align="right" alt="The Paperling mascot hugging a small page with a heart above its head">
-
-Contributions are very welcome — code, docs, bug reports, or ideas.
-
-- 🌱 **New here?** Browse [`good first issue`](https://github.com/Razee4315/Paperling/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) — small, scoped tasks to get started.
-- 🗺️ See the [Roadmap](ROADMAP.md) for where Paperling is headed and where help is wanted.
-- 📦 Want to help with distribution? See [`packaging/`](packaging/) (winget, Scoop, and more).
-- 📋 Please read the [Contributing Guidelines](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md) before opening a pull request.
-
-Even a ⭐ helps others discover the project.
-
-## Author
-
-**Saqlain Abbas**  
-Email: saqlainrazee@gmail.com  
-GitHub: [@Razee4315](https://github.com/Razee4315)
-Linkedin: [@saqlain.razee](https://www.linkedin.com/in/saqlainrazee/)
-
-## License
-
-Paperling is licensed under the **[Apache License 2.0](LICENSE)**: free to use, modify, and distribute for both personal and commercial purposes, with an explicit patent grant. Just keep the license and [NOTICE](NOTICE) with copies you redistribute.
-
-<p align="center">
-  <img src="images/art/mascot-sleep.png" width="110" alt="The Paperling mascot asleep, zzz">
-  <br>
-  <sub><code>~ end of file ~</code></sub>
-</p>
+[Apache License 2.0](LICENSE)。

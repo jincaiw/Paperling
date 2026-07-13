@@ -3049,7 +3049,7 @@ dependencies = [
 
 [[package]]
 name = "paperling"
-version = "1.0.48"
+version = "1.0.50"
 dependencies = [
  "futures-util",
  "keyring",

@@ -12,18 +12,18 @@ interface Props {
 }
 
 const {
-  title = "Paperling: the no-setup Markdown editor with live preview and AI",
-  description = "A fast, native, open-source Markdown editor with live preview, split view, KaTeX math, chemistry equations, Mermaid diagrams, slash commands, and an optional AI assistant. Free for Windows & Linux. Built with Tauri + Rust + React.",
+  title = "Paperling：本地优先的 Markdown 编辑器",
+  description = "本地优先、开箱即用的 Markdown 编辑器，支持实时预览、分屏、KaTeX、化学公式、Mermaid 图表和可选 AI 助手。",
 } = Astro.props;
 
-const base = import.meta.env.BASE_URL; // "/Paperling/"
+const base = import.meta.env.BASE_URL;
 const ogImage = new URL(`${base}og.png`, Astro.site).href;
 const canonical = new URL(base, Astro.site).href;
 const version = "1.0.0";
 ---
 
 <!doctype html>
-<html lang="en" class="no-js">
+<html lang="zh-CN" class="no-js">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -41,7 +41,7 @@ const version = "1.0.0";
       name="keywords"
       content="markdown editor, open source markdown editor, free markdown editor, lightweight markdown editor, tauri markdown editor, markdown editor windows, markdown editor linux, markdown editor with live preview, markdown editor with AI, markdown editor chemistry equations, KaTeX, Mermaid, Paperling"
     />
-    <meta name="author" content="Saqlain Abbas" />
+    <meta name="author" content="jincaiw" />
     <meta name="theme-color" content="#f7f1e5" />
     <meta name="color-scheme" content="light" />
     <link rel="canonical" href={canonical} />
@@ -50,7 +50,7 @@ const version = "1.0.0";
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Paperling" />
-    <meta property="og:title" content="Paperling: Open-Source Markdown Editor with AI Edits" />
+    <meta property="og:title" content="Paperling：本地优先的 Markdown 编辑器" />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
     <meta property="og:image" content={ogImage} />
@@ -59,7 +59,7 @@ const version = "1.0.0";
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Paperling: Open-Source Markdown Editor with AI Edits" />
+    <meta name="twitter:title" content="Paperling：本地优先的 Markdown 编辑器" />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImage} />
 
@@ -75,11 +75,11 @@ const version = "1.0.0";
       description:
         "A fast, no-setup, open-source Markdown editor with live preview, split view, syntax highlighting, KaTeX math, chemistry equations, Mermaid diagrams, slash commands, wikilinks, and an optional AI assistant. Built with Tauri, Rust, and React.",
       url: canonical,
-      downloadUrl: "https://github.com/Razee4315/Paperling/releases/latest",
-      softwareHelp: "https://github.com/Razee4315/Paperling#readme",
+      downloadUrl: "https://github.com/jincaiw/Paperling/releases/latest",
+      softwareHelp: "https://paper.mujizi.com/guide/",
       image: ogImage,
       offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
-      author: { "@type": "Person", name: "Saqlain Abbas", url: "https://github.com/Razee4315" },
+      author: { "@type": "Person", name: "jincaiw", url: "https://github.com/jincaiw" },
     })} />
   </head>
 

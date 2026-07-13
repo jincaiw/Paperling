@@ -4,6 +4,7 @@ import iconPalette from "../assets/mascot/icon-command-palette.png";
 import iconFolder from "../assets/mascot/icon-folder.png";
 import iconBook from "../assets/mascot/icon-book.png";
 import mascotRocket from "../assets/mascot/mascot-rocket.png";
+import { useLocale } from "../context/LocaleContext";
 
 interface TourProps {
     /** Called when the tour finishes or is skipped. Caller persists the done flag. */
@@ -85,6 +86,7 @@ const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min)
 interface SpotRect { left: number; top: number; width: number; height: number }
 
 export function Tour({ onClose, onOpenTutorial }: TourProps) {
+    const { t } = useLocale();
     const [stepIndex, setStepIndex] = useState(0);
     const [rect, setRect] = useState<SpotRect | null>(null);
     const [cardPos, setCardPos] = useState<{ left: number; top: number } | null>(null);
@@ -205,7 +207,7 @@ export function Tour({ onClose, onOpenTutorial }: TourProps) {
             className="fixed inset-0 z-[300] no-select"
             role="dialog"
             aria-modal="true"
-            aria-label="Welcome tour"
+            aria-label={t("Welcome tour")}
         >
             {/* Dim layer. With a target, a spotlight hole punched via box-shadow;
                 without one, a plain full dim. */}
@@ -244,12 +246,12 @@ export function Tour({ onClose, onOpenTutorial }: TourProps) {
                         className={`${step.imageClass} w-auto object-contain`}
                     />
                     <div className="flex flex-col gap-1.5">
-                        <h2 className="text-lg font-bold tracking-tight text-[var(--text-primary)]">{step.title}</h2>
-                        <p className="text-sm leading-relaxed text-[var(--text-secondary)]">{step.body}</p>
+                        <h2 className="text-lg font-bold tracking-tight text-[var(--text-primary)]">{t(step.title)}</h2>
+                        <p className="text-sm leading-relaxed text-[var(--text-secondary)]">{t(step.body)}</p>
                     </div>
 
                     {/* Progress dots */}
-                    <div className="flex items-center gap-1.5" aria-label={`Step ${stepIndex + 1} of ${STEPS.length}`}>
+                    <div className="flex items-center gap-1.5" aria-label={t("Step {current} of {total}", { current: stepIndex + 1, total: STEPS.length })}>
                         {STEPS.map((s, i) => (
                             <span
                                 key={s.id}
@@ -263,7 +265,7 @@ export function Tour({ onClose, onOpenTutorial }: TourProps) {
                             onClick={onClose}
                             className="btn-press whitespace-nowrap text-sm font-medium px-4 py-2 rounded-[var(--radius-md)] bg-[var(--bg-primary)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border)] transition-all duration-200"
                         >
-                            {isFirst || isLast ? "Just start writing" : "Skip tour"}
+                            {t(isFirst || isLast ? "Just start writing" : "Skip tour")}
                         </button>
                         <div className="flex items-center gap-2">
                             {!isFirst && (
@@ -271,7 +273,7 @@ export function Tour({ onClose, onOpenTutorial }: TourProps) {
                                     onClick={back}
                                     className="btn-press whitespace-nowrap text-sm font-medium px-4 py-2 rounded-[var(--radius-md)] bg-[var(--bg-primary)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border)] transition-all duration-200"
                                 >
-                                    Back
+                                    {t("Back")}
                                 </button>
                             )}
                             <button
@@ -279,7 +281,7 @@ export function Tour({ onClose, onOpenTutorial }: TourProps) {
                                 onClick={advance}
                                 className="btn-press whitespace-nowrap text-sm font-medium px-4 py-2 rounded-[var(--radius-md)] bg-[var(--accent)] hover:opacity-90 text-[var(--accent-text)] transition-all duration-200"
                             >
-                                {isLast ? "Open the guide" : isFirst ? "Show me around" : "Next"}
+                                {t(isLast ? "Open the guide" : isFirst ? "Show me around" : "Next")}
                             </button>
                         </div>
                     </div>

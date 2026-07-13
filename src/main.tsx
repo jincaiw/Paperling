@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { revealMainWindow } from "./utils/appWindow";
+import { LocaleProvider } from "./context/LocaleContext";
 // Bundled fonts — load BEFORE index.css so @font-face declarations are
 // registered before any rule that references the family names. Without this
 // import the app falls back to system fonts when there is no network.
@@ -11,9 +12,11 @@ import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
+    <LocaleProvider>
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
+    </LocaleProvider>
   </React.StrictMode>,
 );
 

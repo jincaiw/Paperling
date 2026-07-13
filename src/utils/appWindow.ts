@@ -13,6 +13,10 @@ import { Window } from "@tauri-apps/api/window";
  * is no Tauri window, is a no-op.
  */
 export async function revealMainWindow(): Promise<void> {
+    // Vite's browser-only development mode has no Tauri IPC bridge. Return
+    // before calling Window.getCurrent() so normal UI QA has a clean console;
+    // packaged builds always provide __TAURI_INTERNALS__.
+    if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) return;
     try {
         const win = Window.getCurrent();
         await win.show();

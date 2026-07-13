@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { useLocale } from "../context/LocaleContext";
 
 interface StatusBarProps {
     isSaved: boolean;
@@ -19,12 +20,12 @@ interface StatusBarProps {
     selectionWordCount?: number;
 }
 
-const formatReadingTime = (min: number): string => {
-    if (min < 1) return "< 1 min read";
-    if (min < 60) return `${Math.round(min)} min read`;
+const formatReadingTime = (min: number, t: (source: string, params?: Record<string, string | number>) => string): string => {
+    if (min < 1) return t("< 1 min read");
+    if (min < 60) return t("{minutes} min read", { minutes: Math.round(min) });
     const hours = Math.floor(min / 60);
     const rem = Math.round(min % 60);
-    return rem === 0 ? `${hours}h read` : `${hours}h ${rem}m read`;
+    return rem === 0 ? t("{hours}h read", { hours }) : t("{hours}h {minutes}m read", { hours, minutes: rem });
 };
 
 function StatusBarImpl({
@@ -42,6 +43,7 @@ function StatusBarImpl({
     selectionLength = 0,
     selectionWordCount = 0,
 }: StatusBarProps) {
+    const { t } = useLocale();
     const hasSelection = selectionLength > 0;
     return (
         <footer
@@ -54,7 +56,7 @@ function StatusBarImpl({
                     data-tour="file-explorer"
                     onClick={onToggleFileExplorer}
                     title="Files (Ctrl+Shift+E)"
-                    aria-label={showFileExplorer ? "Close file explorer" : "Open file explorer"}
+                    aria-label={t(showFileExplorer ? "Close file explorer" : "Open file explorer")}
                     aria-pressed={showFileExplorer}
                     className={`btn-press flex items-center justify-center w-8 h-6 rounded transition-colors ${showFileExplorer
                         ? "bg-[var(--accent)] text-[var(--accent-text)]"
@@ -71,7 +73,7 @@ function StatusBarImpl({
                     data-tour="toc"
                     onClick={onToggleTOC}
                     title="Table of Contents (Ctrl+Shift+O)"
-                    aria-label={showTOC ? "Close table of contents" : "Open table of contents"}
+                    aria-label={t(showTOC ? "Close table of contents" : "Open table of contents")}
                     aria-pressed={showTOC}
                     className={`btn-press flex items-center justify-center w-8 h-6 rounded transition-colors ${showTOC
                         ? "bg-[var(--accent)] text-[var(--accent-text)]"
@@ -84,14 +86,14 @@ function StatusBarImpl({
                 </button>
             </div>
             <div className="flex items-center gap-4">
-                <div className="flex items-center gap-1.5" aria-label={isSaved ? "File saved" : "File has unsaved changes"}>
+                <div className="flex items-center gap-1.5" aria-label={t(isSaved ? "File saved" : "File has unsaved changes")}>
                     <span
                         className={`w-2 h-2 rounded-full transition-all ${isSaved
                             ? "bg-[var(--status-saved)] shadow-[0_0_4px_rgba(80,250,123,0.4)]"
                             : "bg-[var(--status-unsaved)] shadow-[0_0_4px_rgba(255,184,108,0.4)] status-dot-unsaved"
                             }`}
                     ></span>
-                    <span className="transition-colors">{isSaved ? "Saved" : "Unsaved"}</span>
+                    <span className="transition-colors">{t(isSaved ? "Saved" : "Unsaved")}</span>
                 </div>
                 {(mode === "code" || mode === "split") && (
                     <div className="hover:text-[var(--text-primary)] cursor-default transition-colors">
@@ -103,23 +105,23 @@ function StatusBarImpl({
                         className={`flex items-center gap-1 cursor-default transition-colors ${hasSelection ? "text-[var(--accent)]" : "hover:text-[var(--text-primary)]"}`}
                         title={
                             hasSelection
-                                ? `Selection: ${selectionWordCount.toLocaleString()} words, ${selectionLength.toLocaleString()} characters`
-                                : (charCount !== undefined ? `${charCount.toLocaleString()} characters` : undefined)
+                                ? `${selectionWordCount.toLocaleString()} ${t("words")}, ${selectionLength.toLocaleString()} ${t("characters")}`
+                                : (charCount !== undefined ? `${charCount.toLocaleString()} ${t("characters")}` : undefined)
                         }
                     >
                         <span className="material-symbols-outlined text-[14px] opacity-70">text_fields</span>
                         {hasSelection
-                            ? `${selectionWordCount.toLocaleString()} / ${wordCount.toLocaleString()} words`
-                            : `${wordCount.toLocaleString()} words`}
+                            ? `${selectionWordCount.toLocaleString()} / ${wordCount.toLocaleString()} ${t("words")}`
+                            : `${wordCount.toLocaleString()} ${t("words")}`}
                     </div>
                 )}
                 {readingTimeMin !== undefined && readingTimeMin > 0 && (
                     <div
                         className="flex items-center gap-1 hover:text-[var(--text-primary)] cursor-default transition-colors"
-                        title="Estimated reading time at 200 wpm"
+                        title={t("Estimated reading time at 200 wpm")}
                     >
                         <span className="material-symbols-outlined text-[14px] opacity-70">schedule</span>
-                        {formatReadingTime(readingTimeMin)}
+                        {formatReadingTime(readingTimeMin, t)}
                     </div>
                 )}
             </div>

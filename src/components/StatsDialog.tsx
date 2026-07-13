@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { computeStats } from "../utils/documentStats";
 import { attachFocusTrap } from "../utils/focusTrap";
 import iconClock from "../assets/mascot/icon-clock.png";
+import { useLocale } from "../context/LocaleContext";
 
 interface StatsDialogProps {
     isOpen: boolean;
@@ -18,6 +19,7 @@ const formatReadingTime = (min: number): string => {
 };
 
 export function StatsDialog({ isOpen, content, onClose }: StatsDialogProps) {
+    const { t } = useLocale();
     const dialogRef = useRef<HTMLDivElement>(null);
 
     const stats = useMemo(() => (isOpen ? computeStats(content) : null), [isOpen, content]);
@@ -55,7 +57,7 @@ export function StatsDialog({ isOpen, content, onClose }: StatsDialogProps) {
     ];
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center" role="dialog" aria-modal="true" aria-label="Document statistics">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center" role="dialog" aria-modal="true" aria-label={t("Document statistics")}>
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
             <div
                 ref={dialogRef}
@@ -64,12 +66,12 @@ export function StatsDialog({ isOpen, content, onClose }: StatsDialogProps) {
                 <header className="flex items-center justify-between px-5 py-3 border-b border-[var(--border)]">
                     <div className="flex items-center gap-3">
                         <img src={iconClock} alt="" aria-hidden="true" draggable={false} className="w-8 h-8 object-contain select-none" />
-                        <h2 className="text-base font-semibold text-[var(--text-primary)]">Document statistics</h2>
+                        <h2 className="text-base font-semibold text-[var(--text-primary)]">{t("Document statistics")}</h2>
                     </div>
                     <button
                         type="button"
                         onClick={onClose}
-                        aria-label="Close statistics"
+                        aria-label={t("Close statistics")}
                         className="w-7 h-7 rounded-[var(--radius-sm)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors"
                     >
                         <span className="material-symbols-outlined text-[18px]">close</span>
@@ -78,13 +80,13 @@ export function StatsDialog({ isOpen, content, onClose }: StatsDialogProps) {
                 <dl className="px-5 py-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                     {rows.map(([label, value]) => (
                         <div key={label} className="contents">
-                            <dt className="text-[var(--text-secondary)]">{label}</dt>
+                            <dt className="text-[var(--text-secondary)]">{t(label)}</dt>
                             <dd className="text-right font-mono text-[var(--text-primary)] tabular-nums">{value}</dd>
                         </div>
                     ))}
                 </dl>
                 <footer className="px-5 py-2 text-[11px] text-[var(--text-muted)] border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
-                    Reading time assumes ~200 words per minute. Word and sentence counts exclude code blocks, frontmatter, and Markdown syntax.
+                    {t("Reading time assumes ~200 words per minute. Word and sentence counts exclude code blocks, frontmatter, and Markdown syntax.")}
                 </footer>
             </div>
         </div>

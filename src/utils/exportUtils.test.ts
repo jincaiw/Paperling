@@ -9,7 +9,8 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
-import { exportToDocx, generateHTML, prepareExportHtml } from "./exportUtils";
+import { generateHTML, prepareExportHtml } from "./exportUtils";
+import { exportToDocx } from "./docxExport";
 
 describe("generateHTML", () => {
     it("wraps the content in a standalone HTML document", () => {

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useLocale } from "../context/LocaleContext";
 
 export interface SlashCommand {
     id: string;
@@ -42,12 +43,13 @@ interface SlashMenuProps {
 }
 
 export function SlashMenu({ isOpen, position, query, onSelect, onClose }: SlashMenuProps) {
+    const { t } = useLocale();
     const [activeIdx, setActiveIdx] = useState(0);
     const listRef = useRef<HTMLUListElement>(null);
 
     const filtered = query
         ? commands.filter((c) =>
-            c.label.toLowerCase().includes(query.toLowerCase()) ||
+            [c.label, t(c.label)].some((label) => label.toLowerCase().includes(query.toLowerCase())) ||
             c.id.toLowerCase().includes(query.toLowerCase())
         )
         : commands;
@@ -82,7 +84,7 @@ export function SlashMenu({ isOpen, position, query, onSelect, onClose }: SlashM
     return (
         <div
             role="listbox"
-            aria-label="Slash commands"
+            aria-label={t("Slash commands")}
             className="fixed z-[80] w-72 max-h-72 overflow-y-auto bg-[var(--bg-secondary)] border border-[var(--border)] rounded-[var(--radius-md)] shadow-2xl animate-fade-in"
             style={{ left: position.x, top: position.y }}
         >
@@ -103,7 +105,7 @@ export function SlashMenu({ isOpen, position, query, onSelect, onClose }: SlashM
                                     {cmd.icon}
                                 </span>
                                 <span className="flex-1 min-w-0">
-                                    <span className="text-sm text-[var(--text-primary)] block">{cmd.label}</span>
+                                    <span className="text-sm text-[var(--text-primary)] block">{t(cmd.label)}</span>
                                     <span className="text-[11px] text-[var(--text-muted)] font-mono truncate block">{cmd.description}</span>
                                 </span>
                             </button>

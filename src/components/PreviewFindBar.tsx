@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocale } from "../context/LocaleContext";
+import { ensureFindHighlightStyles } from "../utils/findHighlightStyles";
 
 /**
  * Find-in-preview for reader mode (FIND-01). Searches the rendered markdown
@@ -61,6 +63,7 @@ function clearHighlights() {
 }
 
 export function PreviewFindBar({ rootRef, onClose }: PreviewFindBarProps) {
+    const { t } = useLocale();
     const [query, setQuery] = useState("");
     const [activeIdx, setActiveIdx] = useState(0);
     const [matchCount, setMatchCount] = useState(0);
@@ -68,6 +71,7 @@ export function PreviewFindBar({ rootRef, onClose }: PreviewFindBarProps) {
     const inputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
+        ensureFindHighlightStyles();
         inputRef.current?.focus();
         return clearHighlights;
     }, []);
@@ -126,13 +130,13 @@ export function PreviewFindBar({ rootRef, onClose }: PreviewFindBarProps) {
     };
 
     const totalLabel = matchCount === 0
-        ? (query.trim() ? "No results" : "")
+        ? (query.trim() ? t("No results") : "")
         : `${activeIdx + 1} of ${matchCount}`;
 
     return (
         <div
             role="search"
-            aria-label="Find in preview"
+            aria-label={t("Find in preview")}
             className="absolute top-2 right-4 z-40 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg shadow-xl px-2 py-2 flex items-center gap-2 animate-fade-in-down"
             style={{ minWidth: 300 }}
             onKeyDown={handleKey}
@@ -143,20 +147,20 @@ export function PreviewFindBar({ rootRef, onClose }: PreviewFindBarProps) {
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Find in document"
-                aria-label="Find in document"
+                placeholder={t("Find in document")}
+                aria-label={t("Find in document")}
                 className="flex-1 px-2 py-1 text-sm bg-[var(--bg-input)] border border-[var(--border)] rounded text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
             />
             <span className="text-[11px] text-[var(--text-secondary)] tabular-nums whitespace-nowrap min-w-[70px] text-right">
                 {totalLabel}
             </span>
-            <button onClick={prev} title="Previous (Shift+Enter)" aria-label="Previous match" className="w-6 h-6 rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] flex items-center justify-center">
+            <button onClick={prev} title="Previous (Shift+Enter)" aria-label={t("Previous match")} className="w-6 h-6 rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] flex items-center justify-center">
                 <span className="material-symbols-outlined text-[16px]">keyboard_arrow_up</span>
             </button>
-            <button onClick={next} title="Next (Enter)" aria-label="Next match" className="w-6 h-6 rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] flex items-center justify-center">
+            <button onClick={next} title="Next (Enter)" aria-label={t("Next match")} className="w-6 h-6 rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] flex items-center justify-center">
                 <span className="material-symbols-outlined text-[16px]">keyboard_arrow_down</span>
             </button>
-            <button onClick={onClose} title="Close (Esc)" aria-label="Close find" className="w-6 h-6 rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] flex items-center justify-center">
+            <button onClick={onClose} title="Close (Esc)" aria-label={t("Close find")} className="w-6 h-6 rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] flex items-center justify-center">
                 <span className="material-symbols-outlined text-[16px]">close</span>
             </button>
         </div>

@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, TauriEvent } from "@tauri-apps/api/event";
 import { clearRecentFiles, getRecentFiles, removeRecentFile, type RecentFile } from "../utils/persistence";
 import { MascotIdle } from "./MascotIdle";
+import { useLocale } from "../context/LocaleContext";
 
 interface WelcomeScreenProps {
     onOpenFile: () => void;
@@ -12,14 +13,15 @@ interface WelcomeScreenProps {
     onOpenRecent?: (path: string) => void;
 }
 
-const formatRelative = (ts: number): string => {
+const formatRelative = (ts: number, locale: string): string => {
     const diff = Date.now() - ts;
     const min = 60_000, hr = 60 * min, day = 24 * hr;
-    if (diff < min) return "just now";
-    if (diff < hr) return `${Math.floor(diff / min)}m ago`;
-    if (diff < day) return `${Math.floor(diff / hr)}h ago`;
-    if (diff < 7 * day) return `${Math.floor(diff / day)}d ago`;
-    return new Date(ts).toLocaleDateString();
+    const formatter = new Intl.RelativeTimeFormat(locale, { numeric: "auto", style: "narrow" });
+    if (diff < min) return formatter.format(0, "minute");
+    if (diff < hr) return formatter.format(-Math.floor(diff / min), "minute");
+    if (diff < day) return formatter.format(-Math.floor(diff / hr), "hour");
+    if (diff < 7 * day) return formatter.format(-Math.floor(diff / day), "day");
+    return new Date(ts).toLocaleDateString(locale);
 };
 
 const parentFolderOf = (path: string): string => {
@@ -29,6 +31,7 @@ const parentFolderOf = (path: string): string => {
 };
 
 export function WelcomeScreen({ onOpenFile, onNewFile, onOpenSettings, onFileDrop, onOpenRecent }: WelcomeScreenProps) {
+    const { locale, t } = useLocale();
     const [recents, setRecents] = useState<RecentFile[]>([]);
     const [missing, setMissing] = useState<Set<string>>(new Set());
     // Highlight while a markdown file is dragged over the welcome screen so
@@ -146,7 +149,7 @@ export function WelcomeScreen({ onOpenFile, onNewFile, onOpenSettings, onFileDro
                         Paperling
                     </h1>
                     <p className="text-sm text-[var(--text-secondary)]">
-                        A minimal markdown editor
+                        {t("A minimal markdown editor")}
                     </p>
                 </div>
 
@@ -156,7 +159,7 @@ export function WelcomeScreen({ onOpenFile, onNewFile, onOpenSettings, onFileDro
                         className="btn-press flex items-center gap-2 bg-[var(--accent)] hover:opacity-90 text-[var(--accent-text)] font-medium text-sm px-5 py-2.5 rounded-[var(--radius-md)] transition-all duration-200"
                     >
                         <span className="material-symbols-outlined text-[20px]">folder_open</span>
-                        <span>Open File</span>
+                        <span>{t("Open File")}</span>
                     </button>
                     {onNewFile && (
                         <button
@@ -164,13 +167,13 @@ export function WelcomeScreen({ onOpenFile, onNewFile, onOpenSettings, onFileDro
                             className="btn-press flex items-center gap-2 bg-[var(--bg-secondary)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] border border-[var(--border)] font-medium text-sm px-5 py-2.5 rounded-[var(--radius-md)] transition-all duration-200"
                         >
                             <span className="material-symbols-outlined text-[20px]">edit_note</span>
-                            <span>New File</span>
+                            <span>{t("New File")}</span>
                         </button>
                     )}
                     {onOpenSettings && (
                         <button
                             onClick={onOpenSettings}
-                            aria-label="Settings"
+                            aria-label={t("Settings")}
                             title="Settings (Ctrl+,)"
                             className="btn-press flex items-center justify-center w-10 h-10 rounded-[var(--radius-md)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border)] transition-all duration-200"
                         >
@@ -180,22 +183,22 @@ export function WelcomeScreen({ onOpenFile, onNewFile, onOpenSettings, onFileDro
                 </div>
 
                 <p className="text-xs text-[var(--text-muted)]">
-                    drag a <code className="bg-[var(--bg-secondary)] px-1.5 py-0.5 rounded text-[var(--text-secondary)] border border-[var(--border)]">.md</code> file · press <kbd className="px-1 py-0.5 font-mono rounded border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-secondary)]">Ctrl+P</kbd> for commands · <kbd className="px-1 py-0.5 font-mono rounded border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-secondary)]">?</kbd> for shortcuts
+                    {locale === "zh-CN" ? "拖入 " : "drag a "}<code className="bg-[var(--bg-secondary)] px-1.5 py-0.5 rounded text-[var(--text-secondary)] border border-[var(--border)]">.md</code>{locale === "zh-CN" ? " 文件 · 按 " : " file · press "}<kbd className="px-1 py-0.5 font-mono rounded border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-secondary)]">Ctrl+P</kbd>{locale === "zh-CN" ? " 打开命令 · 按 " : " for commands · "}<kbd className="px-1 py-0.5 font-mono rounded border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-secondary)]">?</kbd>{locale === "zh-CN" ? " 查看快捷键" : " for shortcuts"}
                 </p>
 
                 {recents.length > 0 && onOpenRecent && (
                     <div className="w-full mt-4 text-left">
                         <div className="flex items-center justify-between mb-2 px-1">
                             <div className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
-                                Recent
+                                {t("Recent")}
                             </div>
                             <button
                                 onClick={handleClearAll}
-                                aria-label="Clear all recent files"
-                                title="Clear all recents"
+                                aria-label={t("Clear all recent files")}
+                                title={t("Clear all recents")}
                                 className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] hover:text-[var(--danger)] transition-colors px-1.5 py-0.5 rounded"
                             >
-                                Clear all
+                                {t("Clear all")}
                             </button>
                         </div>
                         <ul className="flex flex-col">
@@ -214,7 +217,7 @@ export function WelcomeScreen({ onOpenFile, onNewFile, onOpenSettings, onFileDro
                                         onClick={() => !isMissing && onOpenRecent(f.path)}
                                         disabled={isMissing}
                                         className={`btn-press w-full flex items-center gap-3 px-3 pr-9 py-2 rounded-[var(--radius-md)] transition-colors text-left ${isMissing ? "opacity-50 cursor-not-allowed" : "hover:bg-[var(--bg-hover)]"}`}
-                                        title={isMissing ? `${f.path} (missing)` : f.path}
+                                        title={isMissing ? `${f.path} (${t("missing")})` : f.path}
                                     >
                                         <span className="material-symbols-outlined text-[18px] text-[var(--text-secondary)] shrink-0">
                                             {isMissing ? "broken_image" : "description"}
@@ -223,12 +226,12 @@ export function WelcomeScreen({ onOpenFile, onNewFile, onOpenSettings, onFileDro
                                             <div className={`text-sm truncate ${isMissing ? "line-through text-[var(--text-muted)]" : "text-[var(--text-primary)]"}`}>{f.name}</div>
                                             <div className="text-[11px] text-[var(--text-muted)] truncate">{parentFolderOf(f.path)}</div>
                                         </div>
-                                        <span className="text-[11px] text-[var(--text-muted)] tabular-nums shrink-0">{isMissing ? "missing" : formatRelative(f.openedAt)}</span>
+                                        <span className="text-[11px] text-[var(--text-muted)] tabular-nums shrink-0">{isMissing ? t("missing") : formatRelative(f.openedAt, locale)}</span>
                                     </button>
                                     <button
                                         type="button"
                                         aria-label={`Remove ${f.name} from recents`}
-                                        title="Remove from recents"
+                                        title={t("Remove from recents")}
                                         onClick={(e) => handleRemoveRecent(e, f.path)}
                                         className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 w-6 h-6 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--danger)] transition-opacity flex items-center justify-center"
                                     >

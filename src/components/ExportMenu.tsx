@@ -3,17 +3,26 @@ import { useTheme } from '../context/ThemeContext';
 import { useDropdownKeyboard } from '../hooks/useDropdownKeyboard';
 import iconExportPdf from '../assets/mascot/icon-export-pdf.png';
 import iconPaperPlane from '../assets/mascot/icon-paper-plane.png';
+import { useLocale } from '../context/LocaleContext';
 
 // The export module isn't needed for first paint, so we import it on demand to
 // keep it out of the main chunk. Caching the promise means a second click — or
 // HTML-then-PDF — reuses the first load.
 type ExportModule = typeof import('../utils/exportUtils');
+type DocxExportModule = typeof import('../utils/docxExport');
 let exportModulePromise: Promise<ExportModule> | null = null;
+let docxExportModulePromise: Promise<DocxExportModule> | null = null;
 const loadExportModule = (): Promise<ExportModule> => {
     if (!exportModulePromise) {
         exportModulePromise = import('../utils/exportUtils');
     }
     return exportModulePromise;
+};
+const loadDocxExportModule = (): Promise<DocxExportModule> => {
+    if (!docxExportModulePromise) {
+        docxExportModulePromise = import('../utils/docxExport');
+    }
+    return docxExportModulePromise;
 };
 
 interface ExportMenuProps {
@@ -26,6 +35,7 @@ interface ExportMenuProps {
 type ExportFormat = 'html' | 'pdf' | 'docx';
 
 export function ExportMenu({ fileName, getExportHtml, onSuccess, onError }: ExportMenuProps) {
+    const { t } = useLocale();
     const [isOpen, setIsOpen] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
     const { theme, font, fontSize } = useTheme();
@@ -68,18 +78,20 @@ export function ExportMenu({ fileName, getExportHtml, onSuccess, onError }: Expo
         setIsOpen(false);
 
         try {
-            const mod = await loadExportModule();
             if (format === 'html') {
+                const mod = await loadExportModule();
                 // exportToHTML returns false when the save dialog is cancelled.
                 if (await mod.exportToHTML(htmlContent, fileName, theme, font, fontSize)) {
                     onSuccess?.('HTML');
                 }
             } else if (format === 'docx') {
                 // exportToDocx returns false on a cancelled save dialog.
+                const mod = await loadDocxExportModule();
                 if (await mod.exportToDocx(htmlContent, fileName, theme, font, fontSize)) {
                     onSuccess?.('DOCX');
                 }
             } else {
+                const mod = await loadExportModule();
                 const result = await mod.exportToPDF(htmlContent, fileName, theme, font, fontSize);
                 // Only the native save path (Windows/macOS) can confirm a
                 // written file. The Linux print-dialog fallback ('printing') is
@@ -101,7 +113,7 @@ export function ExportMenu({ fileName, getExportHtml, onSuccess, onError }: Expo
             <button
                 onClick={() => !disabled && setIsOpen(!isOpen)}
                 disabled={disabled || isExporting}
-                aria-label="Export document"
+                aria-label={t("Export document")}
                 aria-expanded={isOpen}
                 aria-haspopup="true"
                 className={`btn-press flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[var(--bg-hover)] transition-colors text-xs ${
@@ -111,24 +123,24 @@ export function ExportMenu({ fileName, getExportHtml, onSuccess, onError }: Expo
                         ? 'cursor-not-allowed text-[var(--text-muted)]'
                         : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
-                title="Export document"
+                title={t("Export document")}
             >
                 {isExporting ? (
                     <>
                         <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
-                        <span className="hidden sm:inline">Exporting...</span>
+                        <span className="hidden sm:inline">{t("Exporting...")}</span>
                     </>
                 ) : (
                     <>
                         <span className="material-symbols-outlined text-[16px]">ios_share</span>
-                        <span className="hidden sm:inline">Export</span>
+                        <span className="hidden sm:inline">{t("Export")}</span>
                     </>
                 )}
             </button>
 
             {/* Simple Dropdown Menu */}
             {isOpen && !disabled && (
-                <div ref={panelRef} onKeyDown={onMenuKeyDown} role="menu" aria-label="Export formats" className="absolute left-0 top-full mt-1 w-40 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg shadow-xl overflow-hidden z-[70] animate-fade-in-down">
+                <div ref={panelRef} onKeyDown={onMenuKeyDown} role="menu" aria-label={t("Export formats")} className="absolute left-0 top-full mt-1 w-40 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg shadow-xl overflow-hidden z-[70] animate-fade-in-down">
                     <button
                         role="menuitem"
                         onClick={() => handleExport('html')}

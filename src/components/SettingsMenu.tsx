@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTheme, Theme, FontFamily, FontSize } from '../context/ThemeContext';
 import { useDropdownKeyboard } from '../hooks/useDropdownKeyboard';
+import { useLocale } from '../context/LocaleContext';
 
 const themes: { id: Theme; name: string; colors: [string, string] }[] = [
     { id: 'dark', name: 'Dark', colors: ['#0a0a0a', '#141414'] },
@@ -26,6 +27,7 @@ const fontSizes: { id: FontSize; name: string; size: string }[] = [
 export function SettingsMenu() {
     const [isOpen, setIsOpen] = useState(false);
     const { theme, setTheme, font, setFont, fontSize, setFontSize } = useTheme();
+    const { t } = useLocale();
     const menuRef = useRef<HTMLDivElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const onMenuKeyDown = useDropdownKeyboard(isOpen, panelRef, () => setIsOpen(false));
@@ -57,11 +59,11 @@ export function SettingsMenu() {
             {/* Settings Button */}
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                aria-label="Settings"
+                aria-label={t("Settings")}
                 aria-expanded={isOpen}
                 aria-haspopup="true"
                 className="btn-press flex items-center justify-center w-8 h-8 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-                title="Settings"
+                title={t("Settings")}
             >
                 <span className="material-symbols-outlined text-[18px]">settings</span>
             </button>
@@ -71,36 +73,36 @@ export function SettingsMenu() {
                 ties); the max-height lets the menu scroll on short screens
                 instead of running underneath it. */}
             {isOpen && (
-                <div ref={panelRef} onKeyDown={onMenuKeyDown} role="menu" aria-label="Settings" className="absolute right-0 top-full mt-2 w-80 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl shadow-2xl overflow-y-auto max-h-[calc(100vh-5rem)] z-[70] animate-fade-in-down">
+                <div ref={panelRef} onKeyDown={onMenuKeyDown} role="menu" aria-label={t("Settings")} className="absolute right-0 top-full mt-2 w-80 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl shadow-2xl overflow-y-auto max-h-[calc(100vh-5rem)] z-[70] animate-fade-in-down">
                     {/* Theme Section */}
                     <div className="p-4 border-b border-[var(--border)]">
                         <div className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">
-                            Theme
+                            {t("Theme")}
                         </div>
                         <div className="grid grid-cols-4 gap-2">
-                            {themes.map((t) => (
+                            {themes.map((themeOption) => (
                                 <button
-                                    key={t.id}
-                                    onClick={() => setTheme(t.id)}
-                                    className={`flex-1 flex flex-col items-center gap-2 p-3 rounded-lg transition-all ${theme === t.id
+                                    key={themeOption.id}
+                                    onClick={() => setTheme(themeOption.id)}
+                                    className={`flex-1 flex flex-col items-center gap-2 p-3 rounded-lg transition-all ${theme === themeOption.id
                                         ? 'ring-2 ring-[var(--accent)] bg-[var(--bg-hover)]'
                                         : 'hover:bg-[var(--bg-hover)]'
                                         }`}
-                                    title={t.name}
+                                    title={t(themeOption.name)}
                                 >
                                     {/* Theme Preview */}
                                     <div
                                         className="w-10 h-10 rounded-lg overflow-hidden border border-[var(--border)] flex items-center justify-center shadow-sm"
-                                        style={{ backgroundColor: t.colors[0] }}
+                                        style={{ backgroundColor: themeOption.colors[0] }}
                                     >
-                                        <div className="w-1/2 h-full" style={{ backgroundColor: t.colors[0] }}></div>
-                                        <div className="w-1/2 h-full" style={{ backgroundColor: t.colors[1] }}></div>
+                                        <div className="w-1/2 h-full" style={{ backgroundColor: themeOption.colors[0] }}></div>
+                                        <div className="w-1/2 h-full" style={{ backgroundColor: themeOption.colors[1] }}></div>
                                     </div>
                                     <span
                                         className="text-[11px] font-medium"
                                         style={{ color: 'var(--text-primary)' }}
                                     >
-                                        {t.name}
+                                        {t(themeOption.name)}
                                     </span>
                                 </button>
                             ))}
@@ -110,7 +112,7 @@ export function SettingsMenu() {
                     {/* Font Section */}
                     <div className="p-4 border-b border-[var(--border)]">
                         <div className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">
-                            Font
+                            {t("Font")}
                         </div>
                         <div className="flex flex-col gap-1">
                             {fonts.map((f) => (
@@ -132,7 +134,7 @@ export function SettingsMenu() {
                     {/* Font Size Section */}
                     <div className="p-4">
                         <div className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">
-                            Font Size
+                            {t("Font Size")}
                         </div>
                         <div className="flex gap-2">
                             {fontSizes.map((s) => (
@@ -144,7 +146,7 @@ export function SettingsMenu() {
                                         : 'text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
                                         }`}
                                 >
-                                    {s.name}
+                                    {t(s.name)}
                                 </button>
                             ))}
                         </div>
@@ -157,7 +159,7 @@ export function SettingsMenu() {
                             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
                         >
                             <span className="material-symbols-outlined text-[18px]">tune</span>
-                            More settings…
+                            {t("More settings…")}
                         </button>
                     </div>
                 </div>

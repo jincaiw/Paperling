@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { attachFocusTrap } from "../utils/focusTrap";
+import { useLocale } from "../context/LocaleContext";
 
 export interface PaletteCommand {
     id: string;
@@ -97,6 +98,7 @@ function fuzzyScore(needle: string, haystack: string): number {
 }
 
 export function CommandPalette({ isOpen, items, onClose }: CommandPaletteProps) {
+    const { t } = useLocale();
     const [query, setQuery] = useState("");
     const [activeIdx, setActiveIdx] = useState(0);
     const dialogRef = useRef<HTMLDivElement>(null);
@@ -206,7 +208,7 @@ export function CommandPalette({ isOpen, items, onClose }: CommandPaletteProps) 
     let runningIdx = -1;
 
     return (
-        <div className="fixed inset-0 z-[110] flex items-start justify-center pt-[12vh]" role="dialog" aria-modal="true" aria-label="Command palette">
+        <div className="fixed inset-0 z-[110] flex items-start justify-center pt-[12vh]" role="dialog" aria-modal="true" aria-label={t("Command palette")}>
             <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
 
             <div
@@ -220,8 +222,8 @@ export function CommandPalette({ isOpen, items, onClose }: CommandPaletteProps) 
                         type="text"
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
-                        placeholder="Type a command, file, or heading…"
-                        aria-label="Search commands"
+                        placeholder={t("Type a command, file, or heading…")}
+                        aria-label={t("Search commands")}
                         className="flex-1 bg-transparent text-[var(--text-primary)] outline-none text-sm placeholder:text-[var(--text-muted)]"
                     />
                     <kbd className="px-1.5 py-0.5 text-[11px] font-mono rounded border border-[var(--border)] bg-[var(--bg-input)] text-[var(--text-muted)]">Esc</kbd>
@@ -229,7 +231,7 @@ export function CommandPalette({ isOpen, items, onClose }: CommandPaletteProps) 
 
                 <ul ref={listRef} className="max-h-[420px] overflow-y-auto py-1" role="listbox">
                     {ranked.length === 0 ? (
-                        <li className="px-4 py-6 text-center text-sm text-[var(--text-secondary)]">No results</li>
+                        <li className="px-4 py-6 text-center text-sm text-[var(--text-secondary)]">{t("No results")}</li>
                     ) : grouped.map((g) => (
                         <li key={g.section}>
                             <div className="px-4 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
@@ -269,9 +271,9 @@ export function CommandPalette({ isOpen, items, onClose }: CommandPaletteProps) 
                 </ul>
 
                 <div className="px-4 py-1.5 text-[10px] text-[var(--text-muted)] border-t border-[var(--border-subtle)] bg-[var(--bg-titlebar)] flex items-center gap-3">
-                    <span><kbd className="px-1 font-mono rounded border border-[var(--border)] bg-[var(--bg-input)]">↑↓</kbd> navigate</span>
-                    <span><kbd className="px-1 font-mono rounded border border-[var(--border)] bg-[var(--bg-input)]">↵</kbd> run</span>
-                    <span className="ml-auto">{ranked.length} {ranked.length === 1 ? "result" : "results"}</span>
+                    <span><kbd className="px-1 font-mono rounded border border-[var(--border)] bg-[var(--bg-input)]">↑↓</kbd> {t("navigate")}</span>
+                    <span><kbd className="px-1 font-mono rounded border border-[var(--border)] bg-[var(--bg-input)]">↵</kbd> {t("run")}</span>
+                    <span className="ml-auto">{ranked.length} {t(ranked.length === 1 ? "result" : "results")}</span>
                 </div>
             </div>
         </div>

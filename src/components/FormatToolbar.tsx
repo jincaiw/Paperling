@@ -1,5 +1,6 @@
 import type { EditorResult, EditorState } from "../utils/editorActions";
 import { wrapSelection, insertLink } from "../utils/editorActions";
+import { useLocale } from "../context/LocaleContext";
 
 interface FormatToolbarProps {
     /** Returns the current editor text + selection, or null if not mounted. */
@@ -38,6 +39,7 @@ function ToolButton({ icon, title, onClick }: ToolButtonProps) {
 const Sep = () => <div className="w-px h-5 bg-[var(--border)] mx-0.5" />;
 
 export function FormatToolbar({ getState, apply, insert, onAIAssist }: FormatToolbarProps) {
+    const { t } = useLocale();
     const wrap = (left: string, right: string, ph: string) => () => {
         const st = getState();
         if (!st) return;
@@ -108,28 +110,28 @@ export function FormatToolbar({ getState, apply, insert, onAIAssist }: FormatToo
 
     return (
         <div className="flex items-center gap-0.5 px-2 h-9 bg-[var(--bg-secondary)] border-b border-[var(--border-subtle)] no-select shrink-0">
-            <ToolButton icon="format_h1" title="Heading 1" onClick={heading(1)} />
-            <ToolButton icon="format_h2" title="Heading 2" onClick={heading(2)} />
-            <ToolButton icon="format_h3" title="Heading 3" onClick={heading(3)} />
+            <ToolButton icon="format_h1" title={t("Heading 1")} onClick={heading(1)} />
+            <ToolButton icon="format_h2" title={t("Heading 2")} onClick={heading(2)} />
+            <ToolButton icon="format_h3" title={t("Heading 3")} onClick={heading(3)} />
             <Sep />
-            <ToolButton icon="format_bold" title="Bold (Ctrl+B)" onClick={wrap("**", "**", "bold")} />
-            <ToolButton icon="format_italic" title="Italic (Ctrl+I)" onClick={wrap("*", "*", "italic")} />
-            <ToolButton icon="strikethrough_s" title="Strikethrough" onClick={wrap("~~", "~~", "text")} />
-            <ToolButton icon="code" title="Inline code" onClick={wrap("`", "`", "code")} />
+            <ToolButton icon="format_bold" title={t("Bold (Ctrl+B)")} onClick={wrap("**", "**", "bold")} />
+            <ToolButton icon="format_italic" title={t("Italic (Ctrl+I)")} onClick={wrap("*", "*", "italic")} />
+            <ToolButton icon="strikethrough_s" title={t("Strikethrough")} onClick={wrap("~~", "~~", "text")} />
+            <ToolButton icon="code" title={t("Inline code")} onClick={wrap("`", "`", "code")} />
             <Sep />
-            <ToolButton icon="format_list_bulleted" title="Bullet list" onClick={block("- ")} />
-            <ToolButton icon="format_list_numbered" title="Numbered list" onClick={block("1. ")} />
-            <ToolButton icon="check_box" title="Task list" onClick={block("- [ ] ")} />
-            <ToolButton icon="format_quote" title="Blockquote (Ctrl+/)" onClick={block("> ")} />
+            <ToolButton icon="format_list_bulleted" title={t("Bullet list")} onClick={block("- ")} />
+            <ToolButton icon="format_list_numbered" title={t("Numbered list")} onClick={block("1. ")} />
+            <ToolButton icon="check_box" title={t("Task list")} onClick={block("- [ ] ")} />
+            <ToolButton icon="format_quote" title={t("Blockquote (Ctrl+/)")} onClick={block("> ")} />
             <Sep />
-            <ToolButton icon="link" title="Link (Ctrl+K)" onClick={link} />
-            <ToolButton icon="data_object" title="Code block" onClick={codeBlock} />
-            <ToolButton icon="table_chart" title="Insert table" onClick={insertTable} />
-            <ToolButton icon="horizontal_rule" title="Horizontal rule" onClick={insertHr} />
+            <ToolButton icon="link" title={t("Link (Ctrl+K)")} onClick={link} />
+            <ToolButton icon="data_object" title={t("Code block")} onClick={codeBlock} />
+            <ToolButton icon="table_chart" title={t("Insert table")} onClick={insertTable} />
+            <ToolButton icon="horizontal_rule" title={t("Horizontal rule")} onClick={insertHr} />
             {onAIAssist && (
                 <>
                     <Sep />
-                    <ToolButton icon="auto_awesome" title="AI assist (Alt+J)" onClick={onAIAssist} />
+                    <ToolButton icon="auto_awesome" title={t("AI assist (Alt+J)")} onClick={onAIAssist} />
                 </>
             )}
         </div>

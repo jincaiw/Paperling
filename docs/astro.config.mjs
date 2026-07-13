@@ -2,12 +2,16 @@ import { defineConfig } from 'astro/config';
 import tailwindcss from '@tailwindcss/vite';
 import icon from 'astro-icon';
 
-// Deployed to GitHub Pages at https://razee4315.github.io/Paperling/
-// `base` must match the repo name so every emitted URL is prefixed correctly.
+// The production site uses the custom GitHub Pages domain. Keeping the site
+// URL here makes canonical URLs, sitemap entries, and generated asset links
+// point at the same public address.
 export default defineConfig({
-  site: 'https://razee4315.github.io',
-  base: '/Paperling/',
+  site: 'https://paper.mujizi.com',
+  base: '/',
   trailingSlash: 'ignore',
+  devToolbar: {
+    enabled: false,
+  },
   integrations: [icon()],
   vite: {
     plugins: [tailwindcss()],

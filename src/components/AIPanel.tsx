@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import { streamChat, buildAskMessages, buildAgentMessages, parseEdits, type ChatMessage } from "../utils/aiChat";
 import type { AIConfig } from "../utils/aiAssist";
 import mascotWizard from "../assets/mascot/mascot-wizard.png";
+import { useLocale } from "../context/LocaleContext";
 
 interface AIPanelProps {
     isOpen: boolean;
@@ -28,6 +29,7 @@ interface UIMessage {
 const MAX_HISTORY_TURNS = 8;
 
 export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConfig, onProposeEdit }: AIPanelProps) {
+    const { t } = useLocale();
     const [messages, setMessages] = useState<UIMessage[]>([]);
     const [input, setInput] = useState("");
     const [mode, setMode] = useState<"ask" | "agent">("ask");
@@ -139,21 +141,21 @@ export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConf
     return (
         <aside
             role="complementary"
-            aria-label="AI assistant"
+            aria-label={t("AI assistant")}
             className="fixed right-0 top-12 bottom-7 w-[400px] max-w-[90vw] z-50 flex flex-col bg-[var(--bg-secondary)] border-l border-[var(--border)] shadow-2xl"
         >
             {/* Header */}
             <div className="h-10 shrink-0 px-3 flex items-center justify-between border-b border-[var(--border)] bg-[var(--bg-titlebar)]">
                 <div className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)] no-select tracking-tight">
-                    <span>AI Assistant</span>
+                    <span>{t("AI Assistant")}</span>
                 </div>
                 <div className="flex items-center gap-1">
                     {messages.length > 0 && (
-                        <button onClick={clear} title="New chat" aria-label="New chat" className="w-7 h-7 rounded-[var(--radius-sm)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors">
+                        <button onClick={clear} title={t("New chat")} aria-label={t("New chat")} className="w-7 h-7 rounded-[var(--radius-sm)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors">
                             <span className="material-symbols-outlined text-[18px]">add_comment</span>
                         </button>
                     )}
-                    <button onClick={onClose} title="Close" aria-label="Close AI panel" className="w-7 h-7 rounded-[var(--radius-sm)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors">
+                    <button onClick={onClose} title={t("Close")} aria-label={t("Close AI panel")} className="w-7 h-7 rounded-[var(--radius-sm)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors">
                         <span className="material-symbols-outlined text-[18px]">close</span>
                     </button>
                 </div>
@@ -162,19 +164,19 @@ export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConf
             {/* Context indicator + Ask/Agent mode toggle */}
             <div className="px-3 py-1.5 shrink-0 border-b border-[var(--border-subtle)] flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-[13px] text-[var(--text-muted)]">description</span>
-                <span className="truncate text-[11px] text-[var(--text-muted)] min-w-0">{fileName || "Untitled"}</span>
+                <span className="truncate text-[11px] text-[var(--text-muted)] min-w-0">{fileName || t("Untitled")}</span>
                 {selectionText.trim() && (
-                    <span className="px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-[var(--accent)] text-[11px] shrink-0">selection</span>
+                    <span className="px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-[var(--accent)] text-[11px] shrink-0">{t("selection")}</span>
                 )}
                 <div className="ml-auto flex items-center gap-0.5 bg-[var(--bg-input)] rounded-[var(--radius-sm)] p-0.5 border border-[var(--border-subtle)] shrink-0">
                     {(["ask", "agent"] as const).map((md) => (
                         <button
                             key={md}
                             onClick={() => setMode(md)}
-                            title={md === "ask" ? "Ask questions (read-only)" : "Make edits (review before applying)"}
+                            title={t(md === "ask" ? "Ask questions (read-only)" : "Make edits (review before applying)")}
                             className={`px-2 py-0.5 text-[11px] rounded-[var(--radius-sm)] capitalize transition-colors ${mode === md ? "bg-[var(--accent)] text-[var(--accent-text)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
                         >
-                            {md}
+                            {t(md === "ask" ? "Ask" : "Agent")}
                         </button>
                     ))}
                 </div>
@@ -185,12 +187,12 @@ export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConf
                 {!configured ? (
                     <div className="flex flex-col items-center justify-center h-full text-center gap-3 text-sm text-[var(--text-secondary)]">
                         <span className="material-symbols-outlined text-[32px] opacity-40">key</span>
-                        <p>Connect an AI provider to start chatting about your note.</p>
+                        <p>{t("Connect an AI provider to start chatting about your note.")}</p>
                         <button
                             onClick={() => window.dispatchEvent(new CustomEvent("paperling:open-settings"))}
                             className="px-3 py-1.5 text-sm rounded-[var(--radius-md)] bg-[var(--accent)] text-[var(--accent-text)] hover:opacity-90"
                         >
-                            Open AI settings
+                            {t("Open AI settings")}
                         </button>
                     </div>
                 ) : messages.length === 0 ? (
@@ -203,12 +205,12 @@ export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConf
                             className="w-24 h-24 object-contain select-none mb-1"
                         />
                         <p className="text-sm font-medium text-[var(--text-primary)]">
-                            {mode === "agent" ? "What should I change?" : "Ask about this note"}
+                            {t(mode === "agent" ? "What should I change?" : "Ask about this note")}
                         </p>
                         <p className="text-xs text-[var(--text-muted)] leading-relaxed">
                             {mode === "agent"
-                                ? "I'll propose edits you can review and accept."
-                                : "Summaries, questions, suggestions — anything."}
+                                ? t("I'll propose edits you can review and accept.")
+                                : t("Summaries, questions, suggestions — anything.")}
                         </p>
                     </div>
                 ) : (
@@ -227,7 +229,7 @@ export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConf
                                     ) : (
                                         <span className="inline-flex gap-1 text-[var(--text-muted)]">
                                             <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
-                                            Thinking…
+                                            {t("Thinking…")}
                                         </span>
                                     )}
                                 </div>
@@ -250,21 +252,21 @@ export function AIPanel({ isOpen, onClose, note, fileName, selectionText, aiConf
                             onChange={(e) => setInput(e.target.value)}
                             onKeyDown={onKeyDown}
                             rows={1}
-                            placeholder={mode === "agent" ? "Describe the change…" : "Ask about this note…"}
+                            placeholder={t(mode === "agent" ? "Describe the change…" : "Ask about this note…")}
                             className="flex-1 block w-full bg-transparent text-sm leading-relaxed text-[var(--text-primary)] outline-none focus:outline-none focus-visible:outline-none resize-none placeholder:text-[var(--text-muted)] py-0.5"
                         />
                         {busy ? (
-                            <button onClick={stop} title="Stop" aria-label="Stop generating" className="shrink-0 w-8 h-8 rounded-[var(--radius-md)] bg-[var(--bg-hover)] text-[var(--text-primary)] flex items-center justify-center hover:bg-[var(--border)] transition-colors">
+                            <button onClick={stop} title={t("Stop")} aria-label={t("Stop generating")} className="shrink-0 w-8 h-8 rounded-[var(--radius-md)] bg-[var(--bg-hover)] text-[var(--text-primary)] flex items-center justify-center hover:bg-[var(--border)] transition-colors">
                                 <span className="material-symbols-outlined text-[18px]">stop</span>
                             </button>
                         ) : (
-                            <button onClick={send} disabled={!input.trim()} title="Send (Enter)" aria-label="Send" className="shrink-0 w-8 h-8 rounded-[var(--radius-md)] bg-[var(--accent)] text-[var(--accent-text)] flex items-center justify-center enabled:hover:opacity-90 enabled:active:scale-95 transition-all disabled:opacity-30 disabled:cursor-not-allowed">
+                            <button onClick={send} disabled={!input.trim()} title="Send (Enter)" aria-label={t("Send")} className="shrink-0 w-8 h-8 rounded-[var(--radius-md)] bg-[var(--accent)] text-[var(--accent-text)] flex items-center justify-center enabled:hover:opacity-90 enabled:active:scale-95 transition-all disabled:opacity-30 disabled:cursor-not-allowed">
                                 <span className="material-symbols-outlined text-[18px]">arrow_upward</span>
                             </button>
                         )}
                     </div>
                     <p className="px-1 pt-1.5 text-[10px] text-[var(--text-muted)] no-select">
-                        <kbd className="font-sans">Enter</kbd> to send · <kbd className="font-sans">Shift+Enter</kbd> for newline
+                        <kbd className="font-sans">Enter</kbd> {t("to send")} · <kbd className="font-sans">Shift+Enter</kbd> {t("for newline")}
                     </p>
                 </div>
             )}

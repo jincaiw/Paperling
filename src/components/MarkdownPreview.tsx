@@ -13,6 +13,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { parseFrontmatter, serializeFrontmatter, type FrontmatterValue } from "../utils/frontmatter";
 import type { Scroller } from "../utils/scrollSync";
 import { MermaidBlock, isMermaidLanguage } from "./MermaidBlock";
+import { useLocale } from "../context/LocaleContext";
 
 // Detect KaTeX-style math so we only load the heavy katex bundle when needed.
 // $$...$$ for block math, $...$ for inline math (not preceded/followed by digit
@@ -394,6 +395,7 @@ function extractCodeChild(children: React.ReactNode): { className?: string; text
 
 /** Code block with a copy-to-clipboard button — also intercepts mermaid blocks. */
 function CodeBlock({ children, ...rest }: React.HTMLAttributes<HTMLPreElement>) {
+    const { t } = useLocale();
     const ref = useRef<HTMLPreElement>(null);
     const [copied, setCopied] = useState(false);
 
@@ -418,10 +420,10 @@ function CodeBlock({ children, ...rest }: React.HTMLAttributes<HTMLPreElement>) 
             <button
                 type="button"
                 onClick={handleCopy}
-                aria-label="Copy code"
+                aria-label={t("Copy code")}
                 className="absolute top-2 right-2 z-10 px-2 py-1 text-[11px] rounded bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-secondary)] opacity-0 group-hover:opacity-100 hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-opacity"
             >
-                {copied ? "Copied!" : "Copy"}
+                {t(copied ? "Copied!" : "Copy")}
             </button>
             <pre ref={ref} {...rest}>{children}</pre>
         </div>
@@ -438,6 +440,7 @@ function FrontmatterCard({
     editable: boolean;
     onChange?: (next: Record<string, FrontmatterValue>) => void;
 }) {
+    const { t } = useLocale();
     const [collapsed, setCollapsed] = useState(false);
     const entries = Object.entries(data);
     if (entries.length === 0) return null;
@@ -466,7 +469,7 @@ function FrontmatterCard({
                     {editable && (
                         <input
                             type="text"
-                            placeholder="+ add"
+                            placeholder={t("+ add")}
                             onKeyDown={(e) => {
                                 if (e.key === "Enter") {
                                     const val = e.currentTarget.value.trim();
@@ -654,6 +657,7 @@ function MarkdownPreviewImpl({
     onWikilinkClick,
     onNavigateRelative,
 }: MarkdownPreviewProps) {
+    const { t } = useLocale();
     const mainRef = useRef<HTMLElement>(null);
     const [zoomImage, setZoomImage] = useState<{ src: string; alt: string } | null>(null);
 
@@ -1095,7 +1099,7 @@ function MarkdownPreviewImpl({
                     <button
                         type="button"
                         onClick={() => setZoomImage(null)}
-                        aria-label="Close image"
+                        aria-label={t("Close image")}
                         className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center backdrop-blur"
                     >
                         <span className="material-symbols-outlined text-[20px]">close</span>

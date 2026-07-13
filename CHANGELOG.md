@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.50] - 2026-07-13
+
+### Changed
+
+- 完成应用界面与交互式教程的简体中文支持，并添加翻译完整性 CI 门禁。
+- 优化前端资源：Mermaid 按需拆分、Word 导出延迟加载、图标字体子集化。
+- 新增 Windows x64 Portable 发布物、跨平台 Release 构建，以及中文安装与使用教程站点。
+
 ## [1.0.49] - 2026-07-12
 
 ### Added

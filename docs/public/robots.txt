@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://razee4315.github.io/Paperling/sitemap.xml
+Sitemap: https://paper.mujizi.com/sitemap-index.xml

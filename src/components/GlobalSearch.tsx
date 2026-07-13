@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { attachFocusTrap } from "../utils/focusTrap";
+import { useLocale } from "../context/LocaleContext";
 
 interface SearchMatch {
     line: number;
@@ -27,6 +28,7 @@ interface FlatItem {
 }
 
 export function GlobalSearch({ isOpen, directory, onClose, onOpenResult }: GlobalSearchProps) {
+    const { t } = useLocale();
     const [query, setQuery] = useState("");
     const [caseSensitive, setCaseSensitive] = useState(false);
     const [results, setResults] = useState<FileResult[]>([]);
@@ -78,14 +80,14 @@ export function GlobalSearch({ isOpen, directory, onClose, onOpenResult }: Globa
                 .catch((err) => {
                     if (reqIdRef.current !== id) return;
                     setResults([]);
-                    setError(typeof err === "string" ? err : "Search failed");
+                    setError(typeof err === "string" ? err : t("Search failed"));
                 })
                 .finally(() => {
                     if (reqIdRef.current === id) setLoading(false);
                 });
         }, 200);
         return () => window.clearTimeout(handle);
-    }, [isOpen, query, caseSensitive, directory]);
+    }, [isOpen, query, caseSensitive, directory, t]);
 
     const openItem = (item: FlatItem | undefined) => {
         if (!item) return;
@@ -113,7 +115,7 @@ export function GlobalSearch({ isOpen, directory, onClose, onOpenResult }: Globa
             <div
                 ref={panelRef}
                 role="dialog"
-                aria-label="Search in files"
+                aria-label={t("Search in files")}
                 onKeyDown={handleKeyDown}
                 className="w-[min(680px,92vw)] max-h-[70vh] flex flex-col bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl shadow-2xl overflow-hidden"
             >
@@ -124,19 +126,19 @@ export function GlobalSearch({ isOpen, directory, onClose, onOpenResult }: Globa
                         ref={inputRef}
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
-                        placeholder={directory ? "Search across files in this folder…" : "Open a file first to search its folder"}
+                        placeholder={t(directory ? "Search across files in this folder…" : "Open a file first to search its folder")}
                         disabled={!directory}
                         className="flex-1 bg-transparent outline-none text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
                     />
                     <button
                         onClick={() => setCaseSensitive((v) => !v)}
                         aria-pressed={caseSensitive}
-                        title="Match case"
+                        title={t("Match case")}
                         className={`flex items-center justify-center w-7 h-7 rounded-md text-xs font-semibold transition-colors ${caseSensitive ? "bg-[var(--accent)] text-[var(--accent-text)]" : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"}`}
                     >
                         Aa
                     </button>
-                    <button onClick={onClose} aria-label="Close search" className="flex items-center justify-center w-7 h-7 rounded-md hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]">
+                    <button onClick={onClose} aria-label={t("Close search")} className="flex items-center justify-center w-7 h-7 rounded-md hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]">
                         <span className="material-symbols-outlined text-[18px]">close</span>
                     </button>
                 </div>
@@ -146,15 +148,15 @@ export function GlobalSearch({ isOpen, directory, onClose, onOpenResult }: Globa
                     {error ? (
                         <div className="p-6 text-sm text-[var(--danger)]" role="alert">{error}</div>
                     ) : !query.trim() ? (
-                        <div className="p-6 text-sm text-[var(--text-muted)]">Type to search every markdown file in the current folder.</div>
+                        <div className="p-6 text-sm text-[var(--text-muted)]">{t("Type to search every markdown file in the current folder.")}</div>
                     ) : loading && results.length === 0 ? (
-                        <div className="p-6 text-sm text-[var(--text-secondary)]">Searching…</div>
+                        <div className="p-6 text-sm text-[var(--text-secondary)]">{t("Searching…")}</div>
                     ) : totalMatches === 0 ? (
-                        <div className="p-6 text-sm text-[var(--text-secondary)]">No matches.</div>
+                        <div className="p-6 text-sm text-[var(--text-secondary)]">{t("No matches.")}</div>
                     ) : (
                         <div className="py-2">
                             <div className="px-4 pb-2 text-xs text-[var(--text-muted)]">
-                                {totalMatches} match{totalMatches === 1 ? "" : "es"} in {results.length} file{results.length === 1 ? "" : "s"}
+                                {t("{matches} matches in {files} files", { matches: totalMatches, files: results.length })}
                             </div>
                             {results.map((file) => (
                                 <div key={file.path} className="mb-1">

@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import type { Align, TableOp } from "../utils/tableModel";
+import { useLocale } from "../context/LocaleContext";
 
 interface TableToolbarProps {
     /** Anchor pixel position: top-left of the table's first line. Null hides it. */
@@ -33,6 +34,7 @@ const ALIGN_BTNS: Array<Btn & { align: Align }> = [
 ];
 
 export function TableToolbar({ anchor, activeAlign, onOp }: TableToolbarProps) {
+    const { t } = useLocale();
     const ref = useRef<HTMLDivElement>(null);
     const [adjusted, setAdjusted] = useState<{ left: number; top: number } | null>(null);
 
@@ -62,8 +64,8 @@ export function TableToolbar({ anchor, activeAlign, onOp }: TableToolbarProps) {
         <button
             key={b.title}
             type="button"
-            title={b.title}
-            aria-label={b.title}
+            title={t(b.title)}
+            aria-label={t(b.title)}
             onMouseDown={hold}
             onClick={() => onOp(b.op)}
             className={`w-7 h-7 flex items-center justify-center rounded-[var(--radius-sm)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] ${
@@ -83,7 +85,7 @@ export function TableToolbar({ anchor, activeAlign, onOp }: TableToolbarProps) {
         <div
             ref={ref}
             role="toolbar"
-            aria-label="Table editing"
+            aria-label={t("Table editing")}
             className="fixed z-[85] flex items-center gap-0.5 px-1.5 py-1 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-[var(--radius-md)] shadow-2xl animate-fade-in"
             style={{
                 left: adjusted?.left ?? anchor.x,
@@ -91,10 +93,10 @@ export function TableToolbar({ anchor, activeAlign, onOp }: TableToolbarProps) {
                 visibility: adjusted ? "visible" : "hidden",
             }}
         >
-            <GroupLabel>Row</GroupLabel>
+            <GroupLabel>{t("Row")}</GroupLabel>
             {ROW_BTNS.map((b) => button(b))}
             <Divider />
-            <GroupLabel>Col</GroupLabel>
+            <GroupLabel>{t("Col")}</GroupLabel>
             {COL_BTNS.map((b) => button(b))}
             <Divider />
             {ALIGN_BTNS.map((b) => button(b, activeAlign === b.align))}

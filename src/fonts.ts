@@ -33,6 +33,7 @@ import "@fontsource/inter/latin-800.css";
 // near-instant) woff2 loads, and once shown it never reflows again.
 import jetbrainsMono400Url from "@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2?url";
 import jetbrainsMono500Url from "@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2?url";
+import materialSymbolsUrl from "./assets/fonts/material-symbols-paperling.woff2?url";
 
 const jetbrainsMonoFaces = `
 @font-face {
@@ -50,10 +51,25 @@ const jetbrainsMonoFaces = `
     src: url(${jetbrainsMono500Url}) format('woff2');
 }`;
 
+// A static subset containing only Paperling's shipped icon ligatures. The
+// upstream variable font is about 4.2 MB; this ~20 KB asset keeps current icon
+// markup and offline behavior without thousands of unused glyphs or axes.
+// Derived from the Apache-2.0 Material Symbols font (see NOTICE).
+const materialSymbolsFace = `
+@font-face {
+    font-family: 'Material Symbols Outlined';
+    font-style: normal;
+    font-display: block;
+    font-weight: 400;
+    // The explicit revision also makes a dev-server replacement invalidate a
+    // previously cached font while production still uses Vite's content hash.
+    src: url(${materialSymbolsUrl}?v=2) format('woff2');
+}`;
+
 if (typeof document !== "undefined") {
     const style = document.createElement("style");
-    style.setAttribute("data-paperling-fonts", "jetbrains-mono");
-    style.textContent = jetbrainsMonoFaces;
+    style.setAttribute("data-paperling-fonts", "jetbrains-mono-and-icons");
+    style.textContent = `${jetbrainsMonoFaces}\n${materialSymbolsFace}`;
     document.head.appendChild(style);
     // Eagerly kick off the font load so the editor doesn't sit blank for any
     // perceptible window. With `block` display the page would still wait up to
@@ -68,12 +84,6 @@ if (typeof document !== "undefined") {
 // imported eagerly anymore — see ensureFontLoaded() below. Inter is the default,
 // so a typical session shipped four extra families' CSS + woff2 for nothing.
 // QUALITY-03.
-
-// Material Symbols Outlined — every UI icon. The package ships the variable
-// woff2 with the wght axis (100..700); FILL/GRAD/opsz are tuned via inline
-// `font-variation-settings` in `index.css`, so the same icon glyphs render
-// even when offline.
-import "material-symbols/outlined.css";
 
 // On-demand loaders for the alternate body fonts. Each resolves to a separate
 // async chunk so the woff2 + CSS only download when the user actually selects

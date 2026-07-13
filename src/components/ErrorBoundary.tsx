@@ -1,5 +1,6 @@
 import { Component, ErrorInfo, ReactNode } from "react";
 import { revealMainWindow } from "../utils/appWindow";
+import { translate, type Locale } from "../context/LocaleContext";
 
 interface Props {
     children: ReactNode;
@@ -34,15 +35,17 @@ export class ErrorBoundary extends Component<Props, State> {
 
     render() {
         if (this.state.hasError) {
+            const locale: Locale = document.documentElement.lang === "zh-CN" ? "zh-CN" : "en";
+            const t = (source: string) => translate(locale, source);
             return (
                 <div className="h-screen flex flex-col items-center justify-center bg-[var(--bg-primary)] text-[var(--text-primary)] p-8">
                     <div className="flex flex-col items-center gap-6 max-w-md text-center">
                         <span className="material-symbols-outlined text-[48px] text-[var(--danger)]">
                             error
                         </span>
-                        <h1 className="text-xl font-bold">Something went wrong</h1>
+                        <h1 className="text-xl font-bold">{t("Something went wrong")}</h1>
                         <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-                            Paperling encountered an unexpected error. Your file data should be safe.
+                            {t("Paperling encountered an unexpected error. Your file data should be safe.")}
                         </p>
                         {this.state.error && (
                             <pre className="w-full text-left text-xs bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg p-4 overflow-auto max-h-32 text-[var(--text-secondary)]">
@@ -54,7 +57,7 @@ export class ErrorBoundary extends Component<Props, State> {
                             className="flex items-center gap-2 bg-[var(--accent)] text-[var(--accent-text)] font-medium text-sm px-6 py-2.5 rounded-lg hover:opacity-90 transition-opacity"
                         >
                             <span className="material-symbols-outlined text-[20px]">refresh</span>
-                            Try Again
+                            {t("Try Again")}
                         </button>
                     </div>
                 </div>

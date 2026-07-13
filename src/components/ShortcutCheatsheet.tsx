@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { attachFocusTrap } from "../utils/focusTrap";
 import iconKeyboard from "../assets/mascot/icon-keyboard.png";
+import { useLocale } from "../context/LocaleContext";
 
 interface ShortcutCheatsheetProps {
     isOpen: boolean;
@@ -119,6 +120,7 @@ const renderKey = (k: string): React.ReactNode => {
 };
 
 export function ShortcutCheatsheet({ isOpen, onClose }: ShortcutCheatsheetProps) {
+    const { t } = useLocale();
     const dialogRef = useRef<HTMLDivElement>(null);
     const [filter, setFilter] = useState("");
 
@@ -149,7 +151,7 @@ export function ShortcutCheatsheet({ isOpen, onClose }: ShortcutCheatsheetProps)
         ? groups
             .map((g) => ({
                 ...g,
-                items: g.items.filter((it) => it.description.toLowerCase().includes(q) || it.keys.toLowerCase().includes(q)),
+                items: g.items.filter((it) => [it.description, t(it.description), it.keys].some((value) => value.toLowerCase().includes(q))),
             }))
             .filter((g) => g.items.length > 0)
         : groups;
@@ -164,18 +166,18 @@ export function ShortcutCheatsheet({ isOpen, onClose }: ShortcutCheatsheetProps)
             >
                 <div className="flex items-center gap-3 px-5 py-4 border-b border-[var(--border)]">
                     <img src={iconKeyboard} alt="" aria-hidden="true" draggable={false} className="w-8 h-8 object-contain select-none" />
-                    <h2 id="cheatsheet-title" className="text-base font-semibold text-[var(--text-primary)]">Keyboard Shortcuts</h2>
+                    <h2 id="cheatsheet-title" className="text-base font-semibold text-[var(--text-primary)]">{t("Keyboard Shortcuts")}</h2>
                     <input
                         type="text"
                         value={filter}
                         onChange={(e) => setFilter(e.target.value)}
-                        placeholder="Filter shortcuts…"
-                        aria-label="Filter shortcuts"
+                        placeholder={t("Filter shortcuts…")}
+                        aria-label={t("Filter shortcuts")}
                         className="ml-auto px-2 py-1 text-sm bg-[var(--bg-input)] border border-[var(--border)] rounded-[var(--radius-md)] text-[var(--text-primary)] outline-none focus:border-[var(--accent)] w-48"
                     />
                     <button
                         onClick={onClose}
-                        aria-label="Close cheatsheet"
+                        aria-label={t("Close cheatsheet")}
                         className="w-7 h-7 rounded-[var(--radius-sm)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center justify-center transition-colors"
                     >
                         <span className="material-symbols-outlined text-[18px]">close</span>
@@ -185,17 +187,17 @@ export function ShortcutCheatsheet({ isOpen, onClose }: ShortcutCheatsheetProps)
                 <div className="flex-1 overflow-y-auto px-5 py-4 grid grid-cols-2 gap-x-6 gap-y-5">
                     {filtered.length === 0 ? (
                         <div className="col-span-2 text-center text-[var(--text-secondary)] py-8 text-sm">
-                            No shortcuts match "{filter}"
+                            {t("No shortcuts match {filter}", { filter })}
                         </div>
                     ) : filtered.map((g) => (
                         <section key={g.title}>
                             <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-2">
-                                {g.title}
+                                {t(g.title)}
                             </h3>
                             <ul className="space-y-1.5">
                                 {g.items.map((it, i) => (
                                     <li key={i} className="flex items-center justify-between gap-3">
-                                        <span className="text-sm text-[var(--text-primary)]">{it.description}</span>
+                                        <span className="text-sm text-[var(--text-primary)]">{t(it.description)}</span>
                                         <span className="flex items-center gap-1 shrink-0">{renderKey(it.keys)}</span>
                                     </li>
                                 ))}

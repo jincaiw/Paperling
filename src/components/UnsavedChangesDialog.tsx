@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { Modal } from "./Modal";
 import mascotSad from "../assets/mascot/mascot-sad.png";
+import { useLocale } from "../context/LocaleContext";
 
 interface UnsavedChangesDialogProps {
     isOpen: boolean;
@@ -20,6 +21,7 @@ export function UnsavedChangesDialog({
     onSave,
     dirtyNames,
 }: UnsavedChangesDialogProps) {
+    const { t } = useLocale();
     const saveButtonRef = useRef<HTMLButtonElement>(null);
     const many = (dirtyNames?.length ?? 0) > 1;
 
@@ -44,10 +46,10 @@ export function UnsavedChangesDialog({
                     />
                     <div>
                         <h2 id="unsaved-dialog-title" className="text-base font-semibold text-[var(--text-primary)]">
-                            Unsaved Changes
+                            {t("Unsaved Changes")}
                         </h2>
                         <p className="text-sm text-[var(--text-secondary)]">
-                            {many ? `${dirtyNames!.length} files have unsaved changes` : "Your changes will be lost"}
+                            {many ? t("{count} files have unsaved changes", { count: dirtyNames!.length }) : t("Your changes will be lost")}
                         </p>
                     </div>
                 </div>
@@ -57,8 +59,8 @@ export function UnsavedChangesDialog({
             <div className="px-5 pb-4">
                 <p id="unsaved-dialog-desc" className="text-sm text-[var(--text-secondary)] leading-relaxed">
                     {many
-                        ? "These files have unsaved changes. Do you want to save them before closing?"
-                        : "You have unsaved changes. Do you want to save them before closing?"}
+                        ? t("These files have unsaved changes. Do you want to save them before closing?")
+                        : t("You have unsaved changes. Do you want to save them before closing?")}
                 </p>
                 {many && (
                     <ul className="mt-3 max-h-40 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] divide-y divide-[var(--border)]">
@@ -78,20 +80,20 @@ export function UnsavedChangesDialog({
                     onClick={onClose}
                     className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded-lg transition-colors"
                 >
-                    Cancel
+                    {t("Cancel")}
                 </button>
                 <button
                     onClick={onDiscard}
                     className="px-4 py-2 text-sm font-medium text-[var(--danger)] hover:bg-[var(--danger)]/10 rounded-lg transition-colors"
                 >
-                    {many ? "Discard all" : "Don't Save"}
+                    {t(many ? "Discard all" : "Don't Save")}
                 </button>
                 <button
                     ref={saveButtonRef}
                     onClick={onSave}
                     className="px-4 py-2 text-sm font-medium text-[var(--accent-text)] bg-[var(--accent)] hover:bg-[var(--accent-hover)] rounded-lg transition-colors"
                 >
-                    {many ? "Save all" : "Save"}
+                    {t(many ? "Save all" : "Save")}
                 </button>
             </div>
         </Modal>

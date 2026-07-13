@@ -60,9 +60,10 @@ export default defineConfig(async () => ({
   // disk cache something to keep across upgrades, and lets the browser parse
   // the smaller main chunk quicker on cold start.
   build: {
-    // Headroom over the largest legitimately-large chunk (mermaid.core ~580 kB).
-    // We don't want Vite spamming warnings for chunks we know about.
-    chunkSizeWarningLimit: 800,
+    // DOCX conversion is a deliberately isolated, user-triggered dependency
+    // (~1.7 MB). The 1.8 MB threshold still catches accidental eager bundles
+    // while keeping the production build free of known-actionable warnings.
+    chunkSizeWarningLimit: 1800,
     rollupOptions: {
       output: {
         // Path-regex chunking (function form) for precise control — the object
@@ -75,9 +76,10 @@ export default defineConfig(async () => ({
           if (!id.includes("node_modules")) return;
           // React core — never split apart in practice. ~150 kB minified.
           if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) return "react";
-          // Mermaid (~580 kB) — only ever loaded via dynamic import, so this
-          // stays an async chunk off the cold-start path.
-          if (/[\\/]node_modules[\\/]mermaid[\\/]/.test(id)) return "mermaid";
+          // Do not force all Mermaid modules into one manual chunk. Mermaid's
+          // core package has native dynamic imports per diagram type; grouping
+          // every file here defeated that and made opening one flowchart fetch
+          // every renderer (including C4, architecture and sankey).
           // KaTeX + its remark/rehype glue — also dynamically imported (math docs only).
           if (/[\\/]node_modules[\\/](katex|rehype-katex|remark-math)[\\/]/.test(id)) return "katex";
           // highlight.js + lowlight + rehype-highlight — split out of the

@@ -2,6 +2,7 @@
  * localStorage-backed persistence for app state across sessions.
  * Tauri's webview has localStorage available; values survive app restarts.
  */
+import { invoke } from "@tauri-apps/api/core";
 
 // One-time migration from the app's pre-rename key prefix. The bundle
 // identifier (and therefore the WebView2 storage location) is unchanged, so
@@ -169,7 +170,6 @@ export async function initAIKey(): Promise<void> {
     if (aiKeyLoaded) return;
     aiKeyLoaded = true;
     try {
-        const { invoke } = await import("@tauri-apps/api/core");
         cachedAIKey = await invoke<string>("get_ai_key");
         // One-time migration: move any legacy plaintext key into the keychain.
         if (!cachedAIKey) {
@@ -202,8 +202,7 @@ export const setAIConfig = (cfg: { endpoint: string; model: string; apiKey: stri
     cachedAIKey = cfg.apiKey;
     // Persist the key to the OS keychain; on failure fall back to localStorage so
     // the setting still survives a restart.
-    import("@tauri-apps/api/core")
-        .then(({ invoke }) => invoke("set_ai_key", { key: cfg.apiKey }))
+    Promise.resolve(invoke("set_ai_key", { key: cfg.apiKey }))
         .then(() => { try { localStorage.removeItem(KEY_AI_API_KEY); } catch {/* ignore */} })
         .catch(() => safeSet(KEY_AI_API_KEY, cfg.apiKey));
 };

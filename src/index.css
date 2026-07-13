@@ -313,17 +313,9 @@ select:focus-visible,
   border-radius: var(--radius-sm);
 }
 
-/* Find-in-preview match highlights (CSS Custom Highlight API — FIND-01).
-   ::highlight only supports color/background; fixed ambers read fine on every
-   theme since the underlying text color is preserved. */
-::highlight(paperling-find) {
-  background-color: rgba(255, 196, 0, 0.35);
-}
-
-::highlight(paperling-find-active) {
-  background-color: rgba(255, 145, 0, 0.65);
-  color: #1a1a1a;
-}
+/* Find-in-preview highlight rules are installed at runtime by
+   ensureFindHighlightStyles(). Keeping ::highlight() out of this file avoids
+   the CSS optimizer parsing it as an unsupported pseudo-element. */
 
 /* Respect users who set "reduce motion" at the OS level. */
 @media (prefers-reduced-motion: reduce) {
@@ -382,6 +374,23 @@ select:focus-visible,
 
 /* ===== Material Icons ===== */
 .material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-style: normal;
+  font-weight: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  /* The vendored subset maps the existing icon-name markup through required
+     ligatures. The upstream package set this implicitly; keep it explicit now
+     that Paperling owns the compact font face. */
+  font-feature-settings: 'rlig' 1;
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
   vertical-align: middle;
 }

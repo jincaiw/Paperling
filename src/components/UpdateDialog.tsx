@@ -6,6 +6,7 @@ import remarkGfm from "remark-gfm";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getSkippedUpdateVersion, setSkippedUpdateVersion } from "../utils/persistence";
 import { attachFocusTrap } from "../utils/focusTrap";
+import { useLocale } from "../context/LocaleContext";
 
 type Phase = "available" | "downloading" | "installed" | "error";
 
@@ -68,6 +69,7 @@ const NOTES_COMPONENTS: Components = {
  * popup they can't act on.
  */
 export function UpdateDialog() {
+    const { t } = useLocale();
     const [update, setUpdate] = useState<Update | null>(null);
     const [phase, setPhase] = useState<Phase>("available");
     // 0..1 once the content length is known; -1 = indeterminate.
@@ -151,7 +153,7 @@ export function UpdateDialog() {
     };
 
     return (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center" role="dialog" aria-modal="true" aria-label="Update available">
+        <div className="fixed inset-0 z-[120] flex items-center justify-center" role="dialog" aria-modal="true" aria-label={t("Update available")}>
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={busy ? undefined : dismiss} aria-hidden="true" />
 
             <div ref={dialogRef} className="relative z-10 w-[440px] max-w-[92vw] max-h-[90vh] overflow-y-auto bg-[var(--bg-primary)] border border-[var(--border)] rounded-[var(--radius-lg)] shadow-2xl animate-fade-in">
@@ -161,7 +163,7 @@ export function UpdateDialog() {
                             <span className="material-symbols-outlined text-[22px] text-[var(--accent)]">system_update_alt</span>
                         </div>
                         <div className="min-w-0">
-                            <h2 className="text-base font-semibold text-[var(--text-primary)]">Update available</h2>
+                            <h2 className="text-base font-semibold text-[var(--text-primary)]">{t("Update available")}</h2>
                             <p className="text-sm text-[var(--text-secondary)] mt-0.5">
                                 Paperling <span className="font-semibold text-[var(--text-primary)]">v{update.version}</span> is ready
                                 — you're on v{update.currentVersion}.
@@ -173,7 +175,7 @@ export function UpdateDialog() {
                         <div className="mt-4">
                             <div className="flex items-center gap-1.5 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                                 <span className="material-symbols-outlined text-[14px] text-[var(--accent)]">auto_awesome</span>
-                                What's new
+                                {t("What's new")}
                             </div>
                             <div className="max-h-52 overflow-y-auto pr-1 -mr-1">
                                 <Markdown remarkPlugins={[remarkGfm]} components={NOTES_COMPONENTS}>
@@ -193,17 +195,17 @@ export function UpdateDialog() {
                             </div>
                             <p className="mt-2 text-[12px] text-[var(--text-muted)]">
                                 {phase === "installed"
-                                    ? "Installed — restarting…"
+                                    ? t("Installed — restarting…")
                                     : progress >= 0
-                                        ? `Downloading… ${Math.round(progress * 100)}%`
-                                        : "Downloading…"}
+                                        ? t("Downloading… {progress}%", { progress: Math.round(progress * 100) })
+                                        : t("Downloading…")}
                             </p>
                         </div>
                     )}
 
                     {phase === "error" && (
                         <p className="mt-3 text-[12px] text-[var(--danger)] break-words">
-                            Update failed: {error}
+                            {t("Update failed: {error}", { error })}
                         </p>
                     )}
                 </div>
@@ -217,14 +219,14 @@ export function UpdateDialog() {
                                 onClick={skipVersion}
                                 className="px-3 py-1.5 text-sm rounded-[var(--radius-md)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors"
                             >
-                                Skip this version
+                                {t("Skip this version")}
                             </button>
                             <button
                                 type="button"
                                 onClick={dismiss}
                                 className="px-3 py-1.5 text-sm rounded-[var(--radius-md)] border border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
                             >
-                                Later
+                                {t("Later")}
                             </button>
                             <button
                                 type="button"
@@ -236,7 +238,7 @@ export function UpdateDialog() {
                                 autoFocus
                                 className="px-3.5 py-1.5 text-sm font-medium rounded-[var(--radius-md)] bg-[var(--accent)] text-[var(--accent-text)] hover:opacity-90 transition-opacity"
                             >
-                                Update now
+                                {t("Update now")}
                             </button>
                         </>
                     )}
@@ -246,7 +248,7 @@ export function UpdateDialog() {
                             onClick={dismiss}
                             className="px-3 py-1.5 text-sm rounded-[var(--radius-md)] border border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
                         >
-                            Close
+                            {t("Close")}
                         </button>
                     )}
                 </div>

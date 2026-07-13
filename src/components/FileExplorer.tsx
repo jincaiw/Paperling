@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { attachFocusTrap } from "../utils/focusTrap";
 import mascotCarry from "../assets/mascot/mascot-carry.png";
 import mascotShrug from "../assets/mascot/mascot-shrug.png";
+import { useLocale } from "../context/LocaleContext";
 
 interface FileEntry {
     name: string;
@@ -23,6 +24,7 @@ export function FileExplorer({
     onFileSelect,
     onClose,
 }: FileExplorerProps) {
+    const { t } = useLocale();
     const [files, setFiles] = useState<FileEntry[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -96,7 +98,7 @@ export function FileExplorer({
             setFiles(entries);
         } catch (err) {
             console.error("Failed to load directory:", err);
-            setError("Failed to load files");
+            setError(t("Failed to load files"));
         } finally {
             setIsLoading(false);
         }
@@ -121,13 +123,13 @@ export function FileExplorer({
 
     const directoryName = currentViewDir
         ? currentViewDir.replace(/\\/g, "/").split("/").pop()
-        : "Files";
+        : t("Files");
 
     return (
         <aside
             ref={panelRef}
             role="navigation"
-            aria-label="File explorer"
+            aria-label={t("File explorer")}
             tabIndex={-1}
             className={`fixed left-0 top-12 bottom-7 w-72 bg-[var(--bg-secondary)] border-r border-[var(--border)] z-50 shadow-2xl flex flex-col overflow-hidden transition-transform duration-200 ease-out ${
                 isOpen ? "translate-x-0" : "-translate-x-full"
@@ -139,8 +141,8 @@ export function FileExplorer({
                     <button
                         onClick={handleGoUp}
                         disabled={!parentDir}
-                        aria-label="Go up one folder"
-                        title="Go up"
+                        aria-label={t("Go up one folder")}
+                        title={t("Go up")}
                         className="btn-press flex items-center justify-center w-6 h-6 rounded hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] transition-colors mr-1 disabled:opacity-40 disabled:pointer-events-none"
                     >
                         <span className="material-symbols-outlined text-[18px]">
@@ -155,8 +157,8 @@ export function FileExplorer({
                 <div className="flex items-center gap-1">
                     <button
                         onClick={() => currentViewDir && loadFiles(currentViewDir)}
-                        aria-label="Refresh file list"
-                        title="Refresh"
+                        aria-label={t("Refresh file list")}
+                        title={t("Refresh")}
                         className="btn-press flex items-center justify-center w-7 h-7 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                     >
                         <span className="material-symbols-outlined text-[18px]">
@@ -165,7 +167,7 @@ export function FileExplorer({
                     </button>
                     <button
                         onClick={onClose}
-                        aria-label="Close file explorer"
+                        aria-label={t("Close file explorer")}
                         className="btn-press flex items-center justify-center w-7 h-7 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                     >
                         <span className="material-symbols-outlined text-[18px]">
@@ -179,7 +181,7 @@ export function FileExplorer({
             <div className="flex-1 min-h-0 overflow-y-auto">
                 {isLoading ? (
                     <div className="flex items-center justify-center h-32 text-[var(--text-secondary)] text-sm">
-                        Loading...
+                        {t("Loading...")}
                     </div>
                 ) : error ? (
                     <div className="flex flex-col items-center justify-center gap-3 py-10 text-sm" role="alert">
@@ -189,10 +191,10 @@ export function FileExplorer({
                 ) : files.length === 0 ? (
                     <div className="flex flex-col items-center justify-center gap-3 py-10 text-sm text-[var(--text-secondary)]">
                         <img src={mascotCarry} alt="" aria-hidden="true" draggable={false} className="w-20 h-20 object-contain select-none opacity-90" />
-                        <span>Folder is empty</span>
+                        <span>{t("Folder is empty")}</span>
                     </div>
                 ) : (
-                    <ul className="py-2" role="listbox" aria-label="Files and folders">
+                    <ul className="py-2" role="listbox" aria-label={t("Files and folders")}>
                         {files.map((file, index) => {
                             const isActive = file.path === currentFilePath && !file.is_dir;
                             return (

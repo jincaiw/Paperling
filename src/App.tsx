@@ -115,9 +115,11 @@ import {
 import { countSourceWords, countWords } from "./utils/documentStats";
 import { Tour } from "./components/Tour";
 import { PreviewFindBar } from "./components/PreviewFindBar";
+import { useLocale } from "./context/LocaleContext";
 // The interactive feature guide, shipped as raw markdown so it opens as a real,
 // editable document (offered at the end of the welcome tour / from the palette).
 import tutorialMarkdown from "./assets/tutorial.md?raw";
+import tutorialMarkdownZhCN from "./assets/tutorial.zh-CN.md?raw";
 
 interface FileData {
   path: string;
@@ -155,6 +157,7 @@ const THEME_CHOICES: { id: Theme; label: string }[] = [
 
 function AppContent() {
   const { theme, setTheme } = useTheme();
+  const { locale, t: tr } = useLocale();
   // File state
   const [filePath, setFilePath] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -255,7 +258,12 @@ function AppContent() {
   // content) so it doesn't fire an IPC call on every keystroke. TITLE-01.
   useEffect(() => {
     const title = fileName ? `${isDirty ? "• " : ""}${fileName} — Paperling` : "Paperling";
-    Window.getCurrent().setTitle(title).catch(() => {/* browser dev mode */});
+    try {
+      Window.getCurrent().setTitle(title).catch(() => {/* browser dev mode */});
+    } catch {
+      // Browser dev mode has no Tauri window metadata; getCurrent() throws
+      // synchronously before a Promise exists, so the .catch above cannot see it.
+    }
   }, [fileName, isDirty]);
 
   // First-run welcome tour: auto-start the first time a buffer is on screen.
@@ -466,11 +474,11 @@ function AppContent() {
       // found" reaches the user instead of a generic message — without this,
       // hitting the new 50 MB cap looked exactly like a permission error.
       const msg = errMessage(err);
-      showToast(msg || "Failed to open file", "error");
+      showToast(msg || tr("Failed to open file"), "error");
     } finally {
       setIsLoading(false);
     }
-  }, [showToast, snapshotActiveTab, commitTabs, setActiveTab, newTabId, bumpDocSwap, setMode]);
+  }, [showToast, snapshotActiveTab, commitTabs, setActiveTab, newTabId, bumpDocSwap, setMode, tr]);
 
   // Settings flags above persist themselves via usePersistedState; the matching
   // setters (setSavedViewMode, setSplitRatio, …) are passed into that hook.
@@ -601,7 +609,7 @@ function AppContent() {
         } catch (err) {
           const msg = errMessage(err);
           if (cliFile && p === cliFile) {
-            showToast(`Could not open file: ${msg || p}`, "error");
+            showToast(tr("Could not open file: {file}", { file: msg || p }), "error");
           } else if (/too large/i.test(msg)) {
             showToast(`Could not restore "${p}": ${msg}`, "error");
           }
@@ -720,12 +728,12 @@ function AppContent() {
         await invoke("save_file", { path, content: t.content });
       } catch (err) {
         const msg = errMessage(err);
-        showToast(msg || `Failed to save ${t.fileName}`, "error");
+        showToast(msg || tr("Failed to save {file}", { file: t.fileName }), "error");
         return; // don't close on a failed save — the user would lose the buffer
       }
     }
     forceCloseWindow();
-  }, [collectDirtyTabs, forceCloseWindow, showToast]);
+  }, [collectDirtyTabs, forceCloseWindow, showToast, tr]);
 
   const handleDiscardAndCloseWindow = useCallback(() => {
     setShowUnsavedBeforeClose(false);
@@ -736,12 +744,12 @@ function AppContent() {
   // (clean buffer) or warn (dirty buffer). EXT-01. Callbacks are memoised so the
   // focus listener stays registered across renders.
   const handleExternalReloaded = useCallback(
-    () => showToast("File changed on disk, reloaded the latest version", "info"),
-    [showToast]
+    () => showToast(tr("File changed on disk, reloaded the latest version"), "info"),
+    [showToast, tr]
   );
   const handleExternalConflict = useCallback(
-    () => showToast("This file changed on disk. Saving will overwrite those changes.", "error"),
-    [showToast]
+    () => showToast(tr("This file changed on disk. Saving will overwrite those changes."), "error"),
+    [showToast, tr]
   );
   useExternalChangeWatcher({
     filePathRef, contentRef, originalContentRef, knownMtimeRef,
@@ -987,6 +995,7 @@ function AppContent() {
 
   // Listen for Tauri drag-drop events
   useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
     let mounted = true;
     let unlisten: (() => void) | undefined;
 
@@ -1047,7 +1056,7 @@ function AppContent() {
       cleaned.includes("\0") ||
       /^[a-zA-Z]:/.test(cleaned)
     ) {
-      showToast(`Invalid wikilink target: [[${target}]]`, "error");
+      showToast(tr("Invalid wikilink target: [[{target}]]", { target }), "error");
       return;
     }
     const lastSep = Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"));
@@ -1148,8 +1157,10 @@ function AppContent() {
   // otherwise opens a new tab so the current file is left untouched. Split view
   // shows the markdown and the rendered result side by side.
   const handleOpenTutorial = useCallback(() => {
-    const name = "Welcome to Paperling.md";
-    const bytes = new TextEncoder().encode(tutorialMarkdown).length;
+    const isChinese = locale === "zh-CN";
+    const tutorial = isChinese ? tutorialMarkdownZhCN : tutorialMarkdown;
+    const name = isChinese ? "欢迎使用 Paperling.md" : "Welcome to Paperling.md";
+    const bytes = new TextEncoder().encode(tutorial).length;
 
     // Snapshot first so the active tab's latest edits are preserved even when we
     // switch to (or reuse) a different tab. snapshotActiveTab updates tabsRef
@@ -1162,7 +1173,7 @@ function AppContent() {
 
     const entry: TabState = {
       id, filePath: null, fileName: name,
-      content: tutorialMarkdown, originalContent: tutorialMarkdown,
+      content: tutorial, originalContent: tutorial,
       fileSize: bytes, knownMtime: 0,
     };
     commitTabs(
@@ -1174,13 +1185,13 @@ function AppContent() {
     setProposedDoc(null);
     setFilePath(null);
     setFileName(name);
-    setContent(tutorialMarkdown);
-    setOriginalContent(tutorialMarkdown);
+    setContent(tutorial);
+    setOriginalContent(tutorial);
     setFileSize(bytes);
     knownMtimeRef.current = 0;
     setLastFile(null);
     setMode("split");
-  }, [snapshotActiveTab, commitTabs, setActiveTab, newTabId, bumpDocSwap]);
+  }, [locale, snapshotActiveTab, commitTabs, setActiveTab, newTabId, bumpDocSwap]);
 
   // "Replay the welcome tour" from Settings → About. The tour spotlights
   // editor chrome, so make sure a buffer exists before showing it.
@@ -1242,13 +1253,13 @@ function AppContent() {
           knownMtime: knownMtimeRef.current,
         } : t)));
       }
-      showToast("File saved", "success");
+      showToast(tr("File saved"), "success");
     } catch (err) {
       console.error("Failed to save file:", err);
       const msg = errMessage(err);
-      showToast(msg || "Failed to save file", "error");
+      showToast(msg || tr("Failed to save file"), "error");
     }
-  }, [content, fileName, showToast, commitTabs]);
+  }, [content, fileName, showToast, commitTabs, tr]);
 
   // Save file (Save As if no path yet)
   const handleSaveFile = useCallback(async () => {
@@ -1259,19 +1270,20 @@ function AppContent() {
     try {
       knownMtimeRef.current = await invoke<number>("save_file", { path: filePath, content });
       setOriginalContent(content);
-      showToast("File saved", "success");
+      showToast(tr("File saved"), "success");
     } catch (err) {
       console.error("Failed to save file:", err);
       const msg = errMessage(err);
-      showToast(msg || "Failed to save file", "error");
+      showToast(msg || tr("Failed to save file"), "error");
     }
-  }, [filePath, content, showToast, handleSaveAs]);
+  }, [filePath, content, showToast, handleSaveAs, tr]);
 
   // Runtime file-open forwards. Cold-start CLI files are handled by the pull
   // in the boot effect above; this event now arrives only from the
   // single-instance plugin, when the user double-clicks another .md while
   // Paperling is already running and the second launch hands us its path.
   useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
     let mounted = true;
     let unlisten: (() => void) | undefined;
 
@@ -1397,12 +1409,12 @@ function AppContent() {
   // across renders. Inline arrows here would re-create the closures on every
   // App render and defeat any downstream memoization.
   const handleExportSuccess = useCallback(
-    (fmt: string) => showToast(`Exported as ${fmt}`, "success"),
-    [showToast]
+    (fmt: string) => showToast(tr("Exported as {format}", { format: fmt }), "success"),
+    [showToast, tr]
   );
   const handleExportError = useCallback(
-    (fmt: string) => showToast(`Failed to export ${fmt}`, "error"),
-    [showToast]
+    (fmt: string) => showToast(tr("Failed to export {format}", { format: fmt }), "error"),
+    [showToast, tr]
   );
 
   // App-wide keyboard shortcuts (window-level, mounted once). See the hook.
@@ -1484,7 +1496,7 @@ function AppContent() {
         run: () => {
           revealItemInDir(filePath).catch((err) => {
             console.error("Reveal failed:", err);
-            showToast("Could not reveal file", "error");
+            showToast(tr("Could not reveal file"), "error");
           });
         },
       });
@@ -1496,8 +1508,8 @@ function AppContent() {
         keywords: "clipboard absolute",
         run: () => {
           navigator.clipboard.writeText(filePath).then(
-            () => showToast("File path copied", "success"),
-            () => showToast("Could not copy path", "error"),
+            () => showToast(tr("File path copied"), "success"),
+            () => showToast(tr("Could not copy path"), "error"),
           );
         },
       });
@@ -1623,14 +1635,16 @@ function AppContent() {
     // === Theme === switch directly from the palette. The welcome tour tells
     // users themes live here, and it makes the four themes discoverable without
     // opening Settings. The active theme is marked and skipped as a no-op.
-    for (const t of THEME_CHOICES) {
+    for (const themeChoice of THEME_CHOICES) {
       items.push({
-        id: `theme.${t.id}`,
-        label: theme === t.id ? `Theme: ${t.label} (current)` : `Change theme to ${t.label}`,
+        id: `theme.${themeChoice.id}`,
+        label: theme === themeChoice.id
+          ? tr("Theme: {theme} (current)", { theme: tr(themeChoice.label) })
+          : tr("Change theme to {theme}", { theme: tr(themeChoice.label) }),
         section: "Theme",
         icon: "palette",
         keywords: "theme color appearance dark light paper dracula",
-        run: () => setTheme(t.id),
+        run: () => setTheme(themeChoice.id),
       });
     }
 
@@ -1699,7 +1713,7 @@ function AppContent() {
     handleToggleSplit, handleToggleFileExplorer, handleToggleTOC, toggleFullscreen,
     loadFile, filePath, hasFile, showToast, closeTab,
     typewriterModeEnabled, toolbarVisible, aiEnabled,
-    theme, setTheme,
+    theme, setTheme, tr,
   ]);
 
   // Heading items are recomputed only while the palette is actually open.
@@ -1760,8 +1774,12 @@ function AppContent() {
   // before so the CommandPalette component sees no API change. Reference
   // changes only when one of the sources changes — typically rare.
   const fullPaletteItems = useMemo<PaletteCommand[]>(
-    () => [...paletteItems, ...tabPaletteItems, ...headingPaletteItems],
-    [paletteItems, tabPaletteItems, headingPaletteItems]
+    () => [...paletteItems, ...tabPaletteItems, ...headingPaletteItems].map((item) => ({
+      ...item,
+      label: tr(item.label),
+      section: tr(item.section),
+    })),
+    [paletteItems, tabPaletteItems, headingPaletteItems, tr]
   );
 
   // Tab-bar items. The active tab's name/dirty come from live state (its stored
@@ -2083,7 +2101,7 @@ function AppContent() {
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[var(--bg-primary)]/80 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-3">
             <span className="material-symbols-outlined text-[32px] text-[var(--accent)] animate-spin">progress_activity</span>
-            <span className="text-sm text-[var(--text-secondary)]">Loading...</span>
+            <span className="text-sm text-[var(--text-secondary)]">{tr("Loading...")}</span>
           </div>
         </div>
       )}
@@ -2153,16 +2171,16 @@ function AppContent() {
             y={tabMenu.y}
             onClose={() => setTabMenu(null)}
             actions={[
-              { label: "Close", icon: "close", onClick: () => closeTab(tabMenu.id) },
-              { label: "Close others", icon: "close_fullscreen", disabled: !others, onClick: () => handleTabMenuAction("closeOthers", tabMenu.id) },
-              { label: "Close to the right", icon: "keyboard_tab", disabled: !hasRight, onClick: () => handleTabMenuAction("closeRight", tabMenu.id) },
+              { label: tr("Close"), icon: "close", onClick: () => closeTab(tabMenu.id) },
+              { label: tr("Close others"), icon: "close_fullscreen", disabled: !others, onClick: () => handleTabMenuAction("closeOthers", tabMenu.id) },
+              { label: tr("Close to the right"), icon: "keyboard_tab", disabled: !hasRight, onClick: () => handleTabMenuAction("closeRight", tabMenu.id) },
               {
-                label: "Copy path", icon: "content_copy", dividerBefore: true, disabled: !menuPath,
-                onClick: () => { if (menuPath) navigator.clipboard.writeText(menuPath).then(() => showToast("File path copied", "success"), () => showToast("Could not copy path", "error")); },
+                label: tr("Copy path"), icon: "content_copy", dividerBefore: true, disabled: !menuPath,
+                onClick: () => { if (menuPath) navigator.clipboard.writeText(menuPath).then(() => showToast(tr("File path copied"), "success"), () => showToast(tr("Could not copy path"), "error")); },
               },
               {
-                label: "Reveal in folder", icon: "folder_open", disabled: !menuPath,
-                onClick: () => { if (menuPath) revealItemInDir(menuPath).catch(() => showToast("Could not reveal file", "error")); },
+                label: tr("Reveal in folder"), icon: "folder_open", disabled: !menuPath,
+                onClick: () => { if (menuPath) revealItemInDir(menuPath).catch(() => showToast(tr("Could not reveal file"), "error")); },
               },
             ]}
           />

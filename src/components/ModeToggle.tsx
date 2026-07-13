@@ -1,4 +1,5 @@
 export type ViewMode = "preview" | "code" | "split";
+import { useLocale } from "../context/LocaleContext";
 
 interface ModeToggleProps {
     mode: ViewMode;
@@ -11,17 +12,18 @@ const buttonBase =
     "btn-press flex items-center gap-2 px-3 py-2 rounded-full transition-all duration-200";
 
 export function ModeToggle({ mode, onSetMode, aiPanelOpen }: ModeToggleProps) {
+    const { t } = useLocale();
     return (
         <div
             className="fixed bottom-8 z-50"
             style={{ right: aiPanelOpen ? "calc(min(400px, 90vw) + 2rem)" : "2rem", transition: "right 0.15s ease" }}
             role="group"
-            aria-label="View mode toggle"
+            aria-label={t("View mode toggle")}
         >
             <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-full p-1.5 flex items-center shadow-2xl backdrop-blur-sm transition-colors animate-fade-in">
                 <button
                     onClick={() => onSetMode("preview")}
-                    aria-label="Reader mode"
+                    aria-label={t("Reader mode")}
                     aria-pressed={mode === "preview"}
                     title="Reader (Ctrl+E)"
                     className={`${buttonBase} ${mode === "preview"
@@ -30,12 +32,12 @@ export function ModeToggle({ mode, onSetMode, aiPanelOpen }: ModeToggleProps) {
                         }`}
                 >
                     <span className="material-symbols-outlined text-[20px]">visibility</span>
-                    {mode === "preview" && <span className="text-sm font-bold">Reader</span>}
+                    {mode === "preview" && <span className="text-sm font-bold">{t("Reader")}</span>}
                 </button>
 
                 <button
                     onClick={() => onSetMode("split")}
-                    aria-label="Split view"
+                    aria-label={t("Split view")}
                     aria-pressed={mode === "split"}
                     title="Split view (Ctrl+\\)"
                     className={`${buttonBase} ${mode === "split"
@@ -44,12 +46,12 @@ export function ModeToggle({ mode, onSetMode, aiPanelOpen }: ModeToggleProps) {
                         }`}
                 >
                     <span className="material-symbols-outlined text-[20px]">vertical_split</span>
-                    {mode === "split" && <span className="text-sm font-bold">Split</span>}
+                    {mode === "split" && <span className="text-sm font-bold">{t("Split")}</span>}
                 </button>
 
                 <button
                     onClick={() => onSetMode("code")}
-                    aria-label="Code editor"
+                    aria-label={t("Code editor")}
                     aria-pressed={mode === "code"}
                     title="Code (Ctrl+E)"
                     className={`${buttonBase} ${mode === "code"
@@ -57,7 +59,7 @@ export function ModeToggle({ mode, onSetMode, aiPanelOpen }: ModeToggleProps) {
                         : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                         }`}
                 >
-                    {mode === "code" && <span className="text-sm font-bold">Code</span>}
+                    {mode === "code" && <span className="text-sm font-bold">{t("Code")}</span>}
                     <span className="material-symbols-outlined text-[20px]">code</span>
                 </button>
             </div>

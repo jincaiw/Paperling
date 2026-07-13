@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { runAIAction, type AIAction, type AIConfig } from "../utils/aiAssist";
+import { useLocale } from "../context/LocaleContext";
 
 interface AIBubbleProps {
     /** Anchor pixel position (top-left of selection or caret). Null hides bubble. */
@@ -23,6 +24,7 @@ const ACTIONS: Array<{ id: AIAction; label: string; icon: string; needsSelection
 ];
 
 export function AIBubble({ anchor, selectedText, config, onReplace, onInsert, onClose }: AIBubbleProps) {
+    const { t } = useLocale();
     const [busy, setBusy] = useState<AIAction | null>(null);
     const [result, setResult] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -95,7 +97,7 @@ export function AIBubble({ anchor, selectedText, config, onReplace, onInsert, on
         <div
             ref={bubbleRef}
             role="dialog"
-            aria-label="AI assist"
+            aria-label={t("AI assist")}
             className="fixed z-[90] bg-[var(--bg-secondary)] border border-[var(--border)] rounded-[var(--radius-md)] shadow-2xl animate-fade-in"
             style={{
                 left: adjusted?.left ?? anchor.x,
@@ -112,18 +114,18 @@ export function AIBubble({ anchor, selectedText, config, onReplace, onInsert, on
                         key={a.id}
                         onClick={() => run(a.id)}
                         disabled={busy !== null}
-                        title={a.label}
+                        title={t(a.label)}
                         className={`flex items-center gap-1 px-2 py-1 text-xs rounded-[var(--radius-sm)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50 ${busy === a.id ? "bg-[var(--bg-hover)]" : ""}`}
                     >
                         <span className={`material-symbols-outlined text-[14px] ${busy === a.id ? "animate-spin" : ""}`}>
                             {busy === a.id ? "progress_activity" : a.icon}
                         </span>
-                        <span>{a.label}</span>
+                        <span>{t(a.label)}</span>
                     </button>
                 ))}
                 <button
                     onClick={onClose}
-                    aria-label="Close AI bubble"
+                    aria-label={t("Close AI bubble")}
                     className="ml-auto w-6 h-6 rounded-[var(--radius-sm)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] flex items-center justify-center"
                 >
                     <span className="material-symbols-outlined text-[14px]">close</span>
@@ -138,7 +140,7 @@ export function AIBubble({ anchor, selectedText, config, onReplace, onInsert, on
 
             {result !== null && (
                 <div className="p-2 max-w-[380px]">
-                    <div className="text-[11px] uppercase tracking-wider text-[var(--text-muted)] mb-1">Suggestion</div>
+                    <div className="text-[11px] uppercase tracking-wider text-[var(--text-muted)] mb-1">{t("Suggestion")}</div>
                     <div className="px-2 py-1.5 text-sm text-[var(--text-primary)] bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-[var(--radius-sm)] max-h-40 overflow-y-auto whitespace-pre-wrap">
                         {result}
                     </div>
@@ -147,13 +149,13 @@ export function AIBubble({ anchor, selectedText, config, onReplace, onInsert, on
                             onClick={() => onInsert(result)}
                             className="px-2 py-1 text-xs rounded-[var(--radius-sm)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]"
                         >
-                            Insert below
+                            {t("Insert below")}
                         </button>
                         <button
                             onClick={() => onReplace(result)}
                             className="px-2 py-1 text-xs rounded-[var(--radius-sm)] bg-[var(--accent)] text-[var(--accent-text)] hover:opacity-90"
                         >
-                            Replace
+                            {t("Replace")}
                         </button>
                     </div>
                 </div>

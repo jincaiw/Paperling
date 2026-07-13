@@ -1,4 +1,5 @@
 import { memo, useEffect, useRef, useState } from "react";
+import { useLocale } from "../context/LocaleContext";
 
 export interface TabBarItem {
     id: string;
@@ -22,6 +23,7 @@ interface TabBarProps {
 }
 
 function TabBarImpl({ tabs, activeId, onSelect, onClose, onNewTab, onReorder, onContextMenu }: TabBarProps) {
+    const { t } = useLocale();
     const listRef = useRef<HTMLDivElement>(null);
     const tabRefs = useRef<Map<string, HTMLDivElement>>(new Map());
     const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -74,7 +76,7 @@ function TabBarImpl({ tabs, activeId, onSelect, onClose, onNewTab, onReorder, on
         <div
             ref={listRef}
             role="tablist"
-            aria-label="Open files"
+            aria-label={t("Open files")}
             onWheel={onWheel}
             className="h-9 shrink-0 flex items-stretch overflow-x-auto bg-[var(--bg-titlebar)] border-b border-[var(--border)] no-select"
         >
@@ -144,8 +146,8 @@ function TabBarImpl({ tabs, activeId, onSelect, onClose, onNewTab, onReorder, on
                             onMouseDown={(e) => { e.stopPropagation(); }}
                             onClick={(e) => { e.stopPropagation(); onClose(tab.id); }}
                             tabIndex={-1}
-                            aria-label={`Close ${tab.name}`}
-                            title={tab.dirty ? "Unsaved changes — click to close" : "Close"}
+                            aria-label={t("Close {file}", { file: tab.name })}
+                            title={t(tab.dirty ? "Unsaved changes — click to close" : "Close")}
                             className="shrink-0 w-4 h-4 flex items-center justify-center rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                         >
                             {tab.dirty && (
@@ -168,7 +170,7 @@ function TabBarImpl({ tabs, activeId, onSelect, onClose, onNewTab, onReorder, on
                 opened in tabs. */}
             <button
                 onClick={onNewTab}
-                aria-label="New tab"
+                aria-label={t("New tab")}
                 title="New tab (Ctrl+N)"
                 className="shrink-0 flex items-center justify-center w-9 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
             >
